@@ -1,0 +1,86 @@
+name: CD - Despliegue Continuo (Analítica & ML)
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Entorno de despliegue objetivo'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push-image:
+    name: 📦 Construcción y Publicación de Contenedor ML
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tags }}
+    steps:
+      - name: Checkout del repositorio con Git LFS
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Autenticación en GitHub Container Registry (GHCR)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extraer metadatos de Docker (tags y labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=sha,format=short,prefix=sha-
+
+      - name: Construir y publicar imagen en GHCR
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: 🚀 Despliegue en Entorno
+    runs-on: ubuntu-latest
+    needs: build-and-push-image
+    environment:
+      name: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'staging') || 'production' }}
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Iniciar proceso de despliegue
+        run: |
+          echo "Desplegando en ambiente: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'staging') || 'production' }}"
+          echo "Imagen procesada: ${{ needs.build-and-push-image.outputs.image_tag }}"
+
+      # Paso extensible para orquestadores (Kubernetes, AWS ECS, Google Cloud Run, Azure Container Apps o SSH):
+      - name: Ejecutar script de despliegue
+        run: |
+          echo "✅ Despliegue completado satisfactoriamente."

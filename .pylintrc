@@ -1,0 +1,23 @@
+[MAIN]
+py-version = 3.10
+jobs = 0
+ignore = .git,__pycache__,.venv,venv,build,dist
+disable =
+    E0401,  # import-error
+    E0611,  # no-name-in-module
+    R0903,  # too-few-public-methods
+    R0913,  # too-many-arguments
+    R0801,  # duplicate-code
+    W       # warnings
+
+[FORMAT]
+max-line-length = 90
+
+[DESIGN]
+max-locals = 20
+max-args = 8
+max-attributes = 10
+
+[REPORTS]
+output-format = text
+score = yes

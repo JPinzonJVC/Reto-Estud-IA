@@ -1,0 +1,181 @@
+name: CI - Integración Continua (Analítica & ML)
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'feature/**'
+      - 'bugfix/**'
+  pull_request:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-format:
+    name: 🎨 Linting y Formato de Código
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del repositorio con Git LFS
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Configurar Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Instalar dependencias de desarrollo y producción
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Verificar formato con Black (90 caracteres)
+        run: |
+          black --check --diff app tests scripts
+
+      - name: Verificar orden de importaciones con isort
+        run: |
+          isort --check-only --diff app tests scripts
+
+      - name: Ejecutar Flake8 (PEP 8 y estándares)
+        run: |
+          python scripts/flake8_run.py .
+
+      - name: Ejecutar Pylint (Estándares de calidad QX IDI)
+        run: |
+          python scripts/pylint_run.py .
+
+  type-check:
+    name: 🔍 Chequeo Estático de Tipos (mypy)
+    runs-on: ubuntu-latest
+    needs: lint-and-format
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Ejecutar mypy sobre el aplicativo
+        run: |
+          mypy app
+
+  security-scan:
+    name: 🛡️ Análisis de Seguridad (SAST y Dependencias)
+    runs-on: ubuntu-latest
+    needs: lint-and-format
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Análisis de código estático (SAST) con Bandit
+        run: |
+          bandit -r app -c pyproject.toml
+
+      - name: Auditoría de vulnerabilidades con pip-audit
+        run: |
+          pip-audit -r requirements.txt
+
+  test-and-coverage:
+    name: 🧪 Pruebas Unitarias y Pipelines ML
+    runs-on: ubuntu-latest
+    needs: [type-check, security-scan]
+    steps:
+      - name: Checkout del repositorio con Git LFS
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Configurar Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Generar artefactos de modelo si no existen
+        run: |
+          python -m app.modules.machine_learning.training
+
+      - name: Ejecutar suite de pruebas con Pytest y medir cobertura
+        run: |
+          pytest --cov=app --cov-report=term-missing --cov-report=xml --cov-report=html
+
+      - name: Subir reporte de cobertura como artefacto
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: htmlcov/
+          retention-days: 14
+
+  docker-build-test:
+    name: 🐳 Validación de Compilación Docker
+    runs-on: ubuntu-latest
+    needs: lint-and-format
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Validar compilación de imagen Docker
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: reto-estud-ia:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  ci-status:
+    name: 🏁 Estado General CI
+    runs-on: ubuntu-latest
+    needs: [lint-and-format, type-check, security-scan, test-and-coverage, docker-build-test]
+    if: always()
+    steps:
+      - name: Validar aprobación de todos los checks
+        run: |
+          if [ "${{ needs.lint-and-format.result }}" != "success" ] || \
+             [ "${{ needs.type-check.result }}" != "success" ] || \
+             [ "${{ needs.security-scan.result }}" != "success" ] || \
+             [ "${{ needs.test-and-coverage.result }}" != "success" ] || \
+             [ "${{ needs.docker-build-test.result }}" != "success" ]; then
+            echo "❌ Uno o más checks de CI han fallado."
+            exit 1
+          fi
+          echo "✅ Todos los checks de CI han pasado exitosamente."
