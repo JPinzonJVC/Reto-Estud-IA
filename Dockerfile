@@ -36,6 +36,10 @@ COPY --from=builder --chown=appuser:appgroup /root/.local /home/appuser/.local
 # Copiar código fuente, templates, estáticos y módulos
 COPY --chown=appuser:appgroup . /app
 
+# Asegurar directorios de entrada de datos y logs con permisos adecuados
+RUN mkdir -p /app/input /app/logs && \
+    chown -R appuser:appgroup /app/input /app/logs
+
 USER appuser
 
 EXPOSE 8000

@@ -7,18 +7,19 @@
 [![Imports: isort](https://img.shields.io/badge/%20imports-isort-%231674b1?style=flat&labelColor=ef8336)](https://pycqa.github.io/isort/)
 [![Coverage](https://img.shields.io/badge/coverage-%3E80%25-brightgreen.svg)](https://github.com/JPinzonJVC/Reto-Estud-IA)
 
-Plataforma modular para **análisis de datos, modelos de Machine Learning (Churn y Clustering), motor de riesgo de retención y tableros interactivos**, configurada con un pipeline de **CI/CD en GitHub Actions** adaptado para proyectos de analítica y ciencia de datos.
+Plataforma modular para **análisis de datos, modelos de Machine Learning (Churn y Clustering), motor de riesgo de retención, base de datos relacional PostgreSQL y tableros interactivos**, configurada con un pipeline de **CI/CD en GitHub Actions** adaptado para proyectos de analítica y ciencia de datos.
 
 ---
 
 ## 📋 Tabla de Contenidos
 - [Estructura del Proyecto](#-estructura-del-proyecto)
 - [Arquitectura de CI/CD para Analítica & ML](#-arquitectura-de-cicd-para-analítica--ml)
-- [Gestión de Modelos y Datos Pesados (Git LFS)](#-gestión-de-modelos-y-datos-pesados-git-lfs)
+- [Gestión de Insumos y Datos Locales (Carpeta input)](#-gestión-de-insumos-y-datos-locales-carpeta-input)
+- [Gestión de Modelos con Git LFS](#-gestión-de-modelos-con-git-lfs)
 - [Estándares de Código](#-estándares-de-código)
 - [Instalación y Configuración Local](#-instalación-y-configuración-local)
 - [Ejecución de Checks y Pruebas](#-ejecución-de-checks-y-pruebas)
-- [Despliegue con Docker](#-despliegue-con-docker)
+- [Despliegue con Docker y PostgreSQL](#-despliegue-con-docker-y-postgresql)
 
 ---
 
@@ -31,6 +32,7 @@ Retos_StudIA/
 │       ├── ci.yml                     # Pipeline CI para Analítica & ML
 │       └── cd.yml                     # Pipeline CD (Build & Deploy Docker)
 ├── app/
+│   ├── database.py                    # Conexión, motor y sesiones PostgreSQL (SQLAlchemy)
 │   ├── main.py                        # Entrypoint FastAPI y vistas Jinja2
 │   ├── modules/
 │   │   ├── retention/                 # Módulo de Retención y Fidelización
@@ -55,10 +57,13 @@ Retos_StudIA/
 │   └── static/                        # Recursos estáticos
 │       ├── css/style.css
 │       └── js/main.js
+├── input/                             # Insumos de datos locales (.csv, .parquet) [NO sube a Git]
+│   └── .gitkeep
 ├── scripts/
 │   ├── flake8_run.py                  # Script de validación PEP 8 (90 chars)
 │   └── pylint_run.py                  # Script de análisis estático con pylint-exit
 ├── tests/                             # Suite de pruebas unitarias
+│   ├── test_database.py               # Pruebas de configuración y conexión a base de datos
 │   ├── test_features.py               # Pruebas de extracción de variables
 │   ├── test_preprocessing.py          # Pruebas de transformaciones
 │   ├── test_risk_engine.py            # Pruebas de motor de riesgo
@@ -67,16 +72,25 @@ Retos_StudIA/
 ├── .dockerignore
 ├── .flake8
 ├── .gitattributes                     # Configuración de Git LFS para .pkl
-├── .gitignore
+├── .gitignore                         # Exclusiones de Git (ignora input/*, .csv, .parquet)
 ├── .pre-commit-config.yaml
 ├── .pylintrc
-├── docker-compose.yml
+├── docker-compose.yml                 # Orquestación con App y PostgreSQL
 ├── Dockerfile                         # Multi-stage build optimizado para ML
-├── example.env
+├── example.env                        # Variables de entorno de ejemplo con PostgreSQL
 ├── pyproject.toml                     # Configuración unificada de herramientas
-├── requirements.txt                   # Dependencias de producción (Pandas, Scikit-learn, FastAPI)
+├── requirements.txt                   # Dependencias (Pandas, Scikit-learn, SQLAlchemy, etc.)
 └── requirements-dev.txt               # Herramientas de linters, testing y seguridad
 ```
+
+---
+
+## 📥 Gestión de Insumos y Datos Locales (Carpeta input)
+
+La carpeta [input/](file:///D:/Retos_StudIA/input/) está destinada al almacenamiento local de fuentes de datos crudas y procesadas (`.csv`, `.parquet`, `.xlsx`):
+
+* **Privacidad y Exclusión de Git:** Todos los archivos dentro de `input/` están explícitamente excluidos del repositorio mediante [.gitignore](file:///D:/Retos_StudIA/.gitignore) y [.dockerignore](file:///D:/Retos_StudIA/.dockerignore), conservando únicamente el archivo `input/.gitkeep`.
+* **Montaje en Docker:** En `docker-compose.yml`, el directorio `./input` se monta como volumen en `/app/input`, permitiendo a los pipelines de datos acceder a los archivos locales directamente en el contenedor sin incluirlos en la imagen construida.
 
 ---
 
@@ -107,11 +121,9 @@ flowchart TD
 
 ---
 
-## 📦 Gestión de Modelos y Datos Pesados (Git LFS)
+## 📦 Gestión de Modelos con Git LFS
 
-Los artefactos binarios de modelos (`.pkl`, `.joblib`, `.parquet`) están configurados con **Git LFS** en [.gitattributes](file:///D:/Retos_StudIA/.gitattributes) para evitar que el historial de Git aumente de tamaño de forma descontrolada.
-
-En el pipeline de CI, el paso `actions/checkout@v4` incluye `lfs: true` y una tarea de reentrenamiento fallback en caso de que se requiera regenerar los artefactos durante pruebas aisladas.
+Los artefactos binarios de modelos (`.pkl`, `.joblib`) están configurados con **Git LFS** en [.gitattributes](file:///D:/Retos_StudIA/.gitattributes) para evitar que el historial de Git aumente de tamaño de forma descontrolada.
 
 ---
 
@@ -127,7 +139,7 @@ En el pipeline de CI, el paso `actions/checkout@v4` incluye `lfs: true` y una ta
 ## 🛠️ Instalación y Configuración Local
 
 ```bash
-# 1. Clonar el repositorio con soporte Git LFS
+# 1. Clonar el repositorio
 git clone https://github.com/JPinzonJVC/Reto-Estud-IA.git
 cd Reto-Estud-IA
 git lfs install
@@ -174,19 +186,17 @@ pytest
 
 ---
 
-## 🐳 Despliegue con Docker y Data Lake (MinIO)
+## 🐳 Despliegue con Docker y PostgreSQL
 
-El entorno de contenedores incluye la aplicación y la infraestructura del **Data Lake** basada en **MinIO** (S3 compatible):
+El entorno de contenedores orquesta la aplicación y el motor de base de datos relacional **PostgreSQL**:
 
 - **App:** `http://localhost:8000` (Dashboard interactivo y API FastAPI).
-- **MinIO S3 API:** `http://localhost:9000` (Ingesta, lectura y escritura de datasets con `boto3`).
-- **MinIO Console UI:** `http://localhost:9001` (Consola web de administración del Data Lake).
-- **Credenciales por defecto:** Usuario `minioadmin` | Contraseña `minioadmin123`.
-
-### Buckets auto-aprovisionados al iniciar:
-1. `datalake-raw`: Almacenamiento de datasets crudos y fuentes externas sin procesar.
-2. `datalake-processed`: Tablas limpias, transformadas y datasets de características (features).
-3. `datalake-models`: Serialización y versionado de modelos ML entrenados (`.pkl`, `.joblib`).
+- **PostgreSQL:** Puerto `5432` (Base de datos relacional con volumen persistente `postgres_data`).
+- **Credenciales por defecto:**
+  - *Usuario:* `postgres`
+  - *Contraseña:* `postgres123`
+  - *Base de datos:* `estudia_db`
+- **Volumen de datos locales:** `./input` montado en `/app/input`.
 
 ### Levantar el entorno completo:
 ```bash

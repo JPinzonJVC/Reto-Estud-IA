@@ -74,3 +74,12 @@ Thumbs.db
 logs/*
 !logs/.gitkeep
 *.log
+
+# Data input & datasets (no se suben al repositorio)
+input/*
+!input/.gitkeep
+assitencias/
+*.csv
+*.parquet
+*.xlsx
+*.xls

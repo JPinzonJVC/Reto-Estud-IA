@@ -13,15 +13,19 @@ services:
       - APP_ENV=development
       - APP_HOST=0.0.0.0
       - APP_PORT=8000
-      - MINIO_ENDPOINT=http://minio:9000
-      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
-      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin123}
-      - MINIO_DEFAULT_BUCKET=${MINIO_DEFAULT_BUCKET:-datalake-raw}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres123}@postgres:5432/${POSTGRES_DB:-estudia_db}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres123}
+      - POSTGRES_DB=${POSTGRES_DB:-estudia_db}
+      - INPUT_DIR=/app/input
     volumes:
       - ./app:/app/app
+      - ./input:/app/input
       - ./logs:/app/logs
     depends_on:
-      minio:
+      postgres:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
@@ -29,43 +33,24 @@ services:
       timeout: 5s
       retries: 3
 
-  minio:
-    image: minio/minio:latest
-    container_name: reto_estudia_datalake
+  postgres:
+    image: postgres:15-alpine
+    container_name: reto_estudia_postgres
     restart: unless-stopped
-    command: server /data --console-address ":9001"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres123}
+      POSTGRES_DB: ${POSTGRES_DB:-estudia_db}
     ports:
-      - "9000:9000"  # S3 API
-      - "9001:9001"  # Consola Web MinIO
-    environment:
-      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
-      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin123}
+      - "5432:5432"
     volumes:
-      - minio_data:/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 15s
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-estudia_db}"]
+      interval: 10s
       timeout: 5s
-      retries: 3
-
-  minio-init-buckets:
-    image: minio/mc:latest
-    container_name: reto_estudia_minio_init
-    depends_on:
-      minio:
-        condition: service_healthy
-    entrypoint: >
-      /bin/sh -c "
-      /usr/bin/mc alias set local http://minio:9000 $${MINIO_ROOT_USER:-minioadmin} $${MINIO_ROOT_PASSWORD:-minioadmin123};
-      /usr/bin/mc mb --ignore-existing local/datalake-raw;
-      /usr/bin/mc mb --ignore-existing local/datalake-processed;
-      /usr/bin/mc mb --ignore-existing local/datalake-models;
-      exit 0;
-      "
-    environment:
-      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
-      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin123}
+      retries: 5
 
 volumes:
-  minio_data:
+  postgres_data:
     driver: local

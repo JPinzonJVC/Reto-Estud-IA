@@ -31,3 +31,10 @@ coverage.xml
 .mypy_cache
 logs/*
 !logs/.gitkeep
+input/*
+!input/.gitkeep
+assitencias/
+*.csv
+*.parquet
+*.xlsx
+*.xls
