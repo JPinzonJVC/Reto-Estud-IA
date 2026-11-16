@@ -1,8 +1,9 @@
 """Pruebas unitarias para los endpoints y vistas del aplicativo."""
 
 import unittest
+from unittest.mock import MagicMock
 
-from app.main import health_check
+from app.main import health_check, render_dashboard
 from app.modules.affiliates.router import get_affiliates_summary
 from app.modules.analytics.router import get_analytics_metrics
 from app.modules.retention.router import (
@@ -48,6 +49,12 @@ class TestEndpoints(unittest.TestCase):
         summary = get_affiliates_summary()
         self.assertIn("active_affiliates", summary)
         self.assertIn("commission_paid_usd", summary)
+
+    def test_render_dashboard(self) -> None:
+        """Verifica la renderización de la vista principal del dashboard."""
+        mock_request = MagicMock()
+        response = render_dashboard(mock_request)
+        self.assertIsNotNone(response)
 
 
 if __name__ == "__main__":

@@ -3,19 +3,10 @@
 from pathlib import Path
 from typing import Any
 
-try:
-    import joblib
-except ImportError:
-    import pickle as joblib  # type: ignore[no-redef]
-
+import joblib
 import numpy as np
-
-try:
-    from sklearn.cluster import KMeans
-    from sklearn.linear_model import LogisticRegression
-except ImportError:
-    KMeans = Any  # type: ignore[assignment,misc]
-    LogisticRegression = Any  # type: ignore[assignment,misc]
+from sklearn.cluster import KMeans
+from sklearn.linear_model import LogisticRegression
 
 MODELS_DIR = Path(__file__).parent / "models"
 

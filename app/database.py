@@ -44,6 +44,7 @@ def get_engine() -> Engine:
     if DB_ENGINE is None:
         db_url = get_database_url()
         DB_ENGINE = create_engine(db_url, pool_pre_ping=True)
+    assert DB_ENGINE is not None
     return DB_ENGINE
 
 
