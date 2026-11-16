@@ -28,10 +28,8 @@ jobs:
     outputs:
       image_tag: ${{ steps.meta.outputs.tags }}
     steps:
-      - name: Checkout del repositorio con Git LFS
+      - name: Checkout del repositorio
         uses: actions/checkout@v4
-        with:
-          lfs: true
 
       - name: Configurar Docker Buildx
         uses: docker/setup-buildx-action@v3

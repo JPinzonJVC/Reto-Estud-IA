@@ -15,7 +15,7 @@ Plataforma modular para **análisis de datos, modelos de Machine Learning (Churn
 - [Estructura del Proyecto](#-estructura-del-proyecto)
 - [Arquitectura de CI/CD para Analítica & ML](#-arquitectura-de-cicd-para-analítica--ml)
 - [Gestión de Insumos y Datos Locales (Carpeta input)](#-gestión-de-insumos-y-datos-locales-carpeta-input)
-- [Gestión de Modelos con Git LFS](#-gestión-de-modelos-con-git-lfs)
+- [Exclusión de Modelos y Datos del Repositorio](#-exclusión-de-modelos-y-datos-del-repositorio)
 - [Estándares de Código](#-estándares-de-código)
 - [Instalación y Configuración Local](#-instalación-y-configuración-local)
 - [Ejecución de Checks y Pruebas](#-ejecución-de-checks-y-pruebas)
@@ -71,8 +71,7 @@ Retos_StudIA/
 │   └── test_endpoints.py              # Pruebas de endpoints y servicios
 ├── .dockerignore
 ├── .flake8
-├── .gitattributes                     # Configuración de Git LFS para .pkl
-├── .gitignore                         # Exclusiones de Git (ignora input/*, .csv, .parquet)
+├── .gitignore                         # Exclusiones de Git (ignora input/*, models/*, .csv, .pkl)
 ├── .pre-commit-config.yaml
 ├── .pylintrc
 ├── docker-compose.yml                 # Orquestación con App y PostgreSQL
@@ -102,15 +101,14 @@ El flujo automatizado está diseñado específicamente para los retos de ciencia
 flowchart TD
     A[Push o Pull Request] --> B[GitHub Actions: CI Pipeline]
     subgraph CI["Pipeline de CI (.github/workflows/ci.yml)"]
-        B --> C[Git LFS Checkout<br/>Descarga de modelos .pkl]
-        C --> D[🎨 Lint & Format<br/>Black 90ch + isort + Flake8 + Pylint]
-        D --> E[🔍 Type Checking<br/>mypy app]
-        D --> F[🛡️ Security Scan<br/>Bandit SAST + pip-audit]
-        E --> G[🧪 Pruebas Unitarias y ML<br/>Pytest + Cobertura > 80%]
-        F --> G
-        D --> H[🐳 Docker Build Check<br/>Validación imagen con dependencias ML]
-        G --> I[🏁 CI Status Check<br/>Gate para Branch Protection]
-        H --> I
+        B --> C[🎨 Lint & Format<br/>Black 90ch + isort + Flake8 + Pylint]
+        C --> D[🔍 Type Checking<br/>mypy app]
+        C --> E[🛡️ Security Scan<br/>Bandit SAST + pip-audit]
+        D --> F[🧪 Pruebas Unitarias y ML<br/>Pytest + Cobertura > 80%]
+        E --> F
+        C --> G[🐳 Docker Build Check<br/>Validación imagen con dependencias ML]
+        F --> H[🏁 CI Status Check<br/>Gate para Branch Protection]
+        G --> H
     end
     I -->|Aprobado en rama main / Tag| J[GitHub Actions: CD Pipeline]
     subgraph CD["Pipeline de CD (.github/workflows/cd.yml)"]
@@ -121,9 +119,12 @@ flowchart TD
 
 ---
 
-## 📦 Gestión de Modelos con Git LFS
+## 🔒 Exclusión de Modelos y Datos del Repositorio
 
-Los artefactos binarios de modelos (`.pkl`, `.joblib`) están configurados con **Git LFS** en [.gitattributes](file:///D:/Retos_StudIA/.gitattributes) para evitar que el historial de Git aumente de tamaño de forma descontrolada.
+Tanto los insumos de datos (`.csv`, `.parquet`, `.xlsx`) como los artefactos binarios de modelos de Machine Learning (`.pkl`, `.joblib`, `.h5`, `.pt`, etc.) están **estrictamente excluidos del repositorio de Git** mediante [.gitignore](file:///D:/Retos_StudIA/.gitignore) y [.dockerignore](file:///D:/Retos_StudIA/.dockerignore).
+
+* **Generación en CI:** En el pipeline de GitHub Actions, los modelos de prueba se entrenan y generan de forma autónoma al momento de la ejecución (`python -m app.modules.machine_learning.training`).
+* **Persistencia Local:** Los modelos entrenados localmente se guardan en `app/modules/machine_learning/models/`, conservando únicamente el archivo marcador `.gitkeep` en control de versiones.
 
 ---
 
@@ -142,8 +143,6 @@ Los artefactos binarios de modelos (`.pkl`, `.joblib`) están configurados con *
 # 1. Clonar el repositorio
 git clone https://github.com/JPinzonJVC/Reto-Estud-IA.git
 cd Reto-Estud-IA
-git lfs install
-git lfs pull
 
 # 2. Crear entorno virtual
 python -m venv .venv

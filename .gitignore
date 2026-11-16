@@ -83,3 +83,14 @@ assitencias/
 *.parquet
 *.xlsx
 *.xls
+
+# Modelos serializados de Machine Learning (no se suben al repositorio)
+app/modules/machine_learning/models/*
+!app/modules/machine_learning/models/.gitkeep
+*.pkl
+*.pickle
+*.joblib
+*.h5
+*.onnx
+*.pt
+*.pth

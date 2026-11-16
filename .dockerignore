@@ -38,3 +38,12 @@ assitencias/
 *.parquet
 *.xlsx
 *.xls
+app/modules/machine_learning/models/*
+!app/modules/machine_learning/models/.gitkeep
+*.pkl
+*.pickle
+*.joblib
+*.h5
+*.onnx
+*.pt
+*.pth
