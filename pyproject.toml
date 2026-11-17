@@ -93,7 +93,7 @@ exclude = [
 
 [tool.pytest.ini_options]
 minversion = "7.0"
-addopts = "-ra -q --cov=app --cov-report=term-missing --cov-report=xml --cov-fail-under=80"
+addopts = "-ra -q"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]

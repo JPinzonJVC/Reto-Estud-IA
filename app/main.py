@@ -68,13 +68,12 @@ def render_dashboard(request: Request) -> Any:
     dashboard_template = BASE_DIR / "templates" / "dashboard" / "index.html"
     if dashboard_template.exists():
         return templates.TemplateResponse(
-            "dashboard/index.html",
-            {"request": request, "title": "Reto EstudIA - Dashboard"},
+            request=request,
+            name="dashboard/index.html",
+            context={"title": "Reto EstudIA - Dashboard"},
         )
     return HTMLResponse("<h1>Reto EstudIA - Plataforma de Analítica y ML</h1>")
 
 
 if __name__ == "__main__":
-    host = "127.0.0.1"
-    port = 8000
-    uvicorn.run("app.main:app", host=host, port=port, reload=True)
+    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
