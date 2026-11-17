@@ -35,6 +35,15 @@ Retos_StudIA/
 │   ├── database.py                    # Conexión, motor y sesiones PostgreSQL (SQLAlchemy)
 │   ├── main.py                        # Entrypoint FastAPI y vistas Jinja2
 │   ├── modules/
+│   │   ├── eda/                           # Pipeline ETL Medallion (Bronze -> Silver -> Gold -> Audit)
+│   │   │   ├── config.py                  # Configuración portable hacia input/
+│   │   │   ├── etl_config.json            # Parámetros de negocio y rutas Medallion
+│   │   │   ├── bronze.py                  # Ingesta y verificación SHA-256
+│   │   │   ├── scd2.py                    # Reconstrucción histórica SCD Tipo 2
+│   │   │   ├── silver.py                  # Modelo dimensional puro (Dimensiones y Hechos)
+│   │   │   ├── gold.py                    # Agregaciones analíticas y semáforo heurístico
+│   │   │   ├── audit.py                   # Bitácoras de calidad, duplicados y reconciliación
+│   │   │   └── pipeline.py                # Orquestador ejecutable del pipeline Medallion
 │   │   ├── retention/                 # Módulo de Retención y Fidelización
 │   │   │   ├── router.py              # Endpoints REST de retención
 │   │   │   ├── service.py             # Lógica y orquestación de negocio
@@ -57,8 +66,21 @@ Retos_StudIA/
 │   └── static/                        # Recursos estáticos
 │       ├── css/style.css
 │       └── js/main.js
-├── input/                             # Insumos de datos locales (.csv, .parquet) [NO sube a Git]
+├── input/                             # Capas Medallion y datos locales (.csv, .parquet) [NO sube a Git]
+│   ├── bronze/                        # Copia inmutable verificada con SHA-256 (.csv)
+│   ├── silver/                        # Dimensiones (+SCD2) y Hechos depurados (.csv y .parquet)
+│   ├── gold/                          # Agregaciones analíticas de negocio (.csv y .parquet)
+│   ├── audit/                         # Hashes, duplicados, calidad y reconciliación (.csv y .parquet)
+│   ├── normalizados/                  # Tablas normalizadas de entrada al ETL
+│   ├── CSV/                           # 47 archivos CSV crudos originales
 │   └── .gitkeep
+├── notebooks/                         # Notebooks de EDA y Refactorización Dimensional
+│   ├── analisis_exploratorio.ipynb
+│   ├── resultados_esperados_actho.ipynb
+│   └── refactorizacion_modelo_dimensional.ipynb
+├── docs/                              # Documentación técnica del EDA y Modelo Medallion
+│   ├── README_EDA_MEDALLION_ACTHO360.md
+│   └── DOCUMENTACION_MODELO_REFACTORIZADO.md
 ├── scripts/
 │   ├── flake8_run.py                  # Script de validación PEP 8 (90 chars)
 │   └── pylint_run.py                  # Script de análisis estático con pylint-exit

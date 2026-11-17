@@ -75,9 +75,30 @@ logs/*
 !logs/.gitkeep
 *.log
 
-# Data input & datasets (no se suben al repositorio)
+# Data input & datasets (no se suben al repositorio, se conserva estructura Medallion)
 input/*
 !input/.gitkeep
+!input/bronze/
+input/bronze/*
+!input/bronze/.gitkeep
+!input/silver/
+input/silver/*
+!input/silver/.gitkeep
+!input/gold/
+input/gold/*
+!input/gold/.gitkeep
+!input/audit/
+input/audit/*
+!input/audit/.gitkeep
+!input/normalizados/
+input/normalizados/*
+!input/normalizados/.gitkeep
+!input/CSV/
+input/CSV/*
+!input/CSV/.gitkeep
+!input/duplicados/
+input/duplicados/*
+!input/duplicados/.gitkeep
 assitencias/
 *.csv
 *.parquet
