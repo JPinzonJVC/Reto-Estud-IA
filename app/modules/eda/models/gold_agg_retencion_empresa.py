@@ -98,6 +98,9 @@ class GoldAggRetencionEmpresa(Base):  # type: ignore[misc,valid-type]
     satisfaccion_reciente_1_5 = Column(Float, nullable=True)
     """Calificación de satisfacción más reciente registrada para la empresa (1 a 5)."""
 
+    nps_adaptado_empresa_1_5 = Column(Float, nullable=True)
+    """Puntaje NPS adaptado (-100 a +100) de la empresa (%Promotores - %Detractores)."""
+
     fecha_ultima_encuesta = Column(String(32), nullable=True)
     """Fecha de la última encuesta respondida por la empresa."""
 

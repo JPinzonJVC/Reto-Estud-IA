@@ -228,6 +228,18 @@ def construir_agg_satisfaccion_encuestas(
                 "promedio_satisfaccion",
                 lambda s: int((s < 3.75).sum()),
             ),
+            promotores_nps_adaptado_1_5=(
+                "promedio_satisfaccion",
+                lambda s: int((s >= 4.0).sum()),
+            ),
+            neutros_nps_adaptado_1_5=(
+                "promedio_satisfaccion",
+                lambda s: int(((s >= 3.0) & (s < 4.0)).sum()),
+            ),
+            detractores_nps_adaptado_1_5=(
+                "promedio_satisfaccion",
+                lambda s: int((s < 3.0).sum()),
+            ),
             promotores_nps_0_10=(
                 "pregunta_recomendacion_nps_0_10",
                 lambda s: int((s >= 9).sum()) if s.notna().any() else pd.NA,
@@ -252,6 +264,27 @@ def construir_agg_satisfaccion_encuestas(
         "promedio_relevancia_temas_1_5",
     ):
         agg_sat[col_m] = agg_sat[col_m].round(2)
+
+    tot_resp = agg_sat["total_respuestas"].replace(0, np.nan)
+    agg_sat["porcentaje_promotores_adaptado_1_5"] = (
+        (agg_sat["promotores_nps_adaptado_1_5"] / tot_resp) * 100.0
+    ).round(2)
+    agg_sat["porcentaje_neutros_adaptado_1_5"] = (
+        (agg_sat["neutros_nps_adaptado_1_5"] / tot_resp) * 100.0
+    ).round(2)
+    agg_sat["porcentaje_detractores_adaptado_1_5"] = (
+        (agg_sat["detractores_nps_adaptado_1_5"] / tot_resp) * 100.0
+    ).round(2)
+    agg_sat["nps_adaptado_1_5"] = (
+        (
+            (
+                agg_sat["promotores_nps_adaptado_1_5"]
+                - agg_sat["detractores_nps_adaptado_1_5"]
+            )
+            / tot_resp
+        )
+        * 100.0
+    ).round(2)
 
     def _calcular_nps_fila(row: pd.Series) -> float:
         prom = row["promotores_nps_0_10"]
@@ -333,6 +366,17 @@ def _preparar_base_retencion(
             respuestas_encuestas_total=("id_respuesta", "count"),
             satisfaccion_promedio_1_5=("promedio_satisfaccion", "mean"),
             satisfaccion_reciente_1_5=("promedio_satisfaccion", "last"),
+            nps_adaptado_empresa_1_5=(
+                "promedio_satisfaccion",
+                lambda s: (
+                    round(
+                        ((int((s >= 4.0).sum()) - int((s < 3.0).sum())) / len(s)) * 100.0,
+                        2,
+                    )
+                    if len(s) > 0
+                    else np.nan
+                ),
+            ),
             fecha_ultima_encuesta=("fecha_encuesta", "max"),
         )
     )

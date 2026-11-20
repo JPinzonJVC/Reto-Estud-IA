@@ -84,6 +84,80 @@ def test_conservacion_registros_rechazados_en_silver() -> None:
     assert any("CLAVE_PRIMARIA_DUPLICADA" in m for m in motivos)
 
 
+def test_calculo_nps_adaptado_escala_1_a_5_ejemplo_100_respuestas(
+    tmp_path: Path,
+) -> None:
+    """Verifica el cálculo del NPS adaptado (1-2 Detractor, 3 Neutro, 4-5 Promotor).
+
+    Args:
+        tmp_path: Directorio temporal de pytest.
+
+    """
+    cfg = cargar_configuracion(salida_root_override=tmp_path / "input")
+    cfg.asegurar_directorios()
+    bitacora = BitacoraAuditoria(run_id="RUN-NPS-1-5", fecha_corte="2026-11-13")
+
+    filas = []
+    for i in range(60):
+        filas.append(
+            {
+                "id_respuesta": f"P-{i}",
+                "modalidad_encuesta": "Presencial",
+                "periodo_mes_iso": "2026-09",
+                "id_empresa": "EMP-0001",
+                "id_persona": "P-0001",
+                "promedio_satisfaccion": 4.5,
+                "calif_locacion_o_plataforma": 5,
+                "calif_convocatoria_publicidad": 4,
+                "calif_conferencistas": 5,
+                "calif_relevancia_temas": 4,
+                "pregunta_recomendacion_nps_0_10": float("nan"),
+            }
+        )
+    for i in range(25):
+        filas.append(
+            {
+                "id_respuesta": f"N-{i}",
+                "modalidad_encuesta": "Presencial",
+                "periodo_mes_iso": "2026-09",
+                "id_empresa": "EMP-0001",
+                "id_persona": "P-0001",
+                "promedio_satisfaccion": 3.0,
+                "calif_locacion_o_plataforma": 3,
+                "calif_convocatoria_publicidad": 3,
+                "calif_conferencistas": 3,
+                "calif_relevancia_temas": 3,
+                "pregunta_recomendacion_nps_0_10": float("nan"),
+            }
+        )
+    for i in range(15):
+        filas.append(
+            {
+                "id_respuesta": f"D-{i}",
+                "modalidad_encuesta": "Presencial",
+                "periodo_mes_iso": "2026-09",
+                "id_empresa": "EMP-0001",
+                "id_persona": "P-0001",
+                "promedio_satisfaccion": 2.0,
+                "calif_locacion_o_plataforma": 2,
+                "calif_convocatoria_publicidad": 2,
+                "calif_conferencistas": 2,
+                "calif_relevancia_temas": 2,
+                "pregunta_recomendacion_nps_0_10": float("nan"),
+            }
+        )
+
+    agg_sat = construir_agg_satisfaccion_encuestas(pd.DataFrame(filas), cfg, bitacora)
+    assert len(agg_sat) == 1
+    assert agg_sat.loc[0, "total_respuestas"] == 100
+    assert agg_sat.loc[0, "promotores_nps_adaptado_1_5"] == 60
+    assert agg_sat.loc[0, "neutros_nps_adaptado_1_5"] == 25
+    assert agg_sat.loc[0, "detractores_nps_adaptado_1_5"] == 15
+    assert agg_sat.loc[0, "porcentaje_promotores_adaptado_1_5"] == 60.0
+    assert agg_sat.loc[0, "porcentaje_detractores_adaptado_1_5"] == 15.0
+    assert agg_sat.loc[0, "nps_adaptado_1_5"] == 45.0
+
+
 def test_preparacion_nps_0_10_cuando_existen_respuestas_validas(tmp_path: Path) -> None:
     """Verifica que Gold calcule NPS solo cuando existan respuestas 0-10 válidas.
 

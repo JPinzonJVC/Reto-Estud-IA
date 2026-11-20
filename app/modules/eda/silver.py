@@ -502,6 +502,26 @@ def _estado_identidad_encuesta(row: pd.Series) -> str:
     return "RESPUESTA_ANONIMA_SIN_CORRESPONDENCIA"
 
 
+def _clasificar_nps_adaptado_1_5(promedio: Any) -> str:
+    """Clasifica el promedio Likert 1-5 en Promotor (4-5), Neutro (3) o Detractor (1-2).
+
+    Args:
+        promedio: Calificación promedio de satisfacción en escala 1 a 5.
+
+    Returns:
+        Categoría del NPS adaptado ('PROMOTOR', 'NEUTRO', 'DETRACTOR' o 'SIN_DATO').
+
+    """
+    if pd.isna(promedio):
+        return "SIN_DATO"
+    val = float(promedio)
+    if val >= 4.0:
+        return "PROMOTOR"
+    if val >= 3.0:
+        return "NEUTRO"
+    return "DETRACTOR"
+
+
 def _clasificar_expiracion_nula(row: pd.Series) -> str:
     """Clasifica la presencia o ausencia de fecha de expiración en movimientos CRM.
 
@@ -549,6 +569,9 @@ def _procesar_encuestas_y_movimientos(
         _estado_identidad_encuesta, axis=1
     )
     df_enc_silver["tipo_encuesta"] = "ENCUESTA_POST_EVENTO_SATISFACCION_1_5"
+    df_enc_silver["categoria_nps_adaptado_1_5"] = df_enc_silver[
+        "promedio_satisfaccion"
+    ].apply(_clasificar_nps_adaptado_1_5)
     df_enc_silver["pregunta_recomendacion_nps_0_10"] = pd.Series(
         [np.nan] * len(df_enc_silver), dtype="float64"
     )

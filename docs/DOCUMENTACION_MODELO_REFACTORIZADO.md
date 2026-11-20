@@ -14,7 +14,7 @@ El pipeline ETL de **ACTHO 360** procesa las fuentes normalizadas desde `input/n
 3. **Capa `gold/` (`input/gold/`)**:
    - Genera `agg_participacion_empresa`, `agg_satisfaccion_encuestas` y `agg_retencion_empresa`.
    - Separa estrictamente membresías vencidas (`dias_para_expiracion < 0`) de próximas a vencer (`0 <= dias_para_expiracion <= 90`).
-   - Mantiene la escala Likert 1–5 separada del NPS 0–10 (`nps_oficial_0_10 = NaN` para encuestas históricas 1–5, con cálculo automático habilitado cuando ingresan respuestas 0–10 válidas).
+   - Calcula el **NPS Adaptado en escala 1–5** ($\text{NPS}_{\text{adaptado}} = \%\text{Promotores}_{4\text{–}5} - \%\text{Detractores}_{1\text{–}2}$, entre `-100` y `+100`, clasificando `1–2` como Detractores, `3` como Neutros y `4–5` como Promotores) en `agg_satisfaccion_encuestas` y `agg_retencion_empresa`, y deja además preparada la columna `nps_oficial_0_10` para la encuesta de 90 días en escala 0–10.
 4. **Capa `audit/` (`input/audit/`)**:
    - Registra `audit_ejecuciones_etl`, `audit_hashes_fuentes_bronze`, `audit_registros_duplicados` (122 registros clasificados), `audit_registros_rechazados`, `audit_calidad_datos`, `audit_reconciliacion_origen_destino` y `audit_cargas`.
 5. **Persistencia en PostgreSQL (`app/modules/eda/models/` y `postgres_loader.py`)**:

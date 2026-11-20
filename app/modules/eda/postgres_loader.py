@@ -56,7 +56,7 @@ MAPA_NOMBRE_TABLA_SQL: dict[str, str] = {
 
 
 def inicializar_esquema_medallion(engine: Engine | None = None) -> None:
-    """Crea todas las tablas Medallion en la base de datos si no existen.
+    """Crea las tablas Medallion y sincroniza columnas nuevas si no existen.
 
     Args:
         engine: Instancia opcional de Engine. Si es None, usa get_engine().
@@ -64,6 +64,23 @@ def inicializar_esquema_medallion(engine: Engine | None = None) -> None:
     """
     target_engine = engine or get_engine()
     Base.metadata.create_all(bind=target_engine)
+    inspector = inspect(target_engine)
+    tablas_existentes = set(inspector.get_table_names())
+
+    with target_engine.begin() as conn:
+        for table_name, table in Base.metadata.tables.items():
+            if table_name not in tablas_existentes:
+                continue
+            cols_db = {c["name"] for c in inspector.get_columns(table_name)}
+            for col in table.columns:
+                if col.name not in cols_db:
+                    col_type = col.type.compile(dialect=target_engine.dialect)
+                    conn.execute(
+                        text(
+                            f"ALTER TABLE {table_name} "
+                            f"ADD COLUMN {col.name} {col_type}"
+                        )
+                    )
 
 
 def _sanear_valor_sql(valor: Any) -> Any:

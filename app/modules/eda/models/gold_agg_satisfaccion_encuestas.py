@@ -52,6 +52,27 @@ class GoldAggSatisfaccionEncuestas(Base):  # type: ignore[misc,valid-type]
     calificaciones_bajas_menores_375 = Column(Integer, nullable=False, default=0)
     """Cantidad de respuestas con promedio de satisfacción inferior a 3.75."""
 
+    promotores_nps_adaptado_1_5 = Column(Integer, nullable=False, default=0)
+    """Conteo de promotores adaptados (calificación 4 a 5 en escala Likert 1-5)."""
+
+    neutros_nps_adaptado_1_5 = Column(Integer, nullable=False, default=0)
+    """Conteo de neutros adaptados (calificación 3 en escala Likert 1-5)."""
+
+    detractores_nps_adaptado_1_5 = Column(Integer, nullable=False, default=0)
+    """Conteo de detractores adaptados (calificación 1 a 2 en escala Likert 1-5)."""
+
+    porcentaje_promotores_adaptado_1_5 = Column(Float, nullable=True)
+    """Porcentaje de promotores adaptados (0 a 100%) en escala 1-5."""
+
+    porcentaje_neutros_adaptado_1_5 = Column(Float, nullable=True)
+    """Porcentaje de neutros adaptados (0 a 100%) en escala 1-5."""
+
+    porcentaje_detractores_adaptado_1_5 = Column(Float, nullable=True)
+    """Porcentaje de detractores adaptados (0 a 100%) en escala 1-5."""
+
+    nps_adaptado_1_5 = Column(Float, nullable=True)
+    """Puntaje NPS adaptado (-100 a +100) como %Promotores(4-5) - %Detractores(1-2)."""
+
     promotores_nps_0_10 = Column(Float, nullable=True)
     """Conteo de promotores (calificación 9-10) cuando existe pregunta NPS 0-10."""
 

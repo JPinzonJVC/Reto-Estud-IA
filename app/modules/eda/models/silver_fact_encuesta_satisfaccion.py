@@ -83,6 +83,9 @@ class SilverFactEncuestaSatisfaccion(Base):  # type: ignore[misc,valid-type]
     tipo_encuesta = Column(String(64), nullable=True)
     """Tipología del instrumento (ENCUESTA_POST_EVENTO_SATISFACCION_1_5)."""
 
+    categoria_nps_adaptado_1_5 = Column(String(64), nullable=True)
+    """Clasificación NPS adaptado 1-5 (PROMOTOR: 4-5, NEUTRO: 3, DETRACTOR: 1-2)."""
+
     pregunta_recomendacion_nps_0_10 = Column(Float, nullable=True)
     """Calificación de recomendación NPS en escala 0 a 10 cuando esté disponible."""
 
