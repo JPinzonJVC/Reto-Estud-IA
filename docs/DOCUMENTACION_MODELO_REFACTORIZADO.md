@@ -17,7 +17,7 @@ El pipeline ETL de **ACTHO 360** procesa las fuentes normalizadas desde `input/n
    - Mantiene la escala Likert 1–5 separada del NPS 0–10 (`nps_oficial_0_10 = NaN` para encuestas históricas 1–5, con cálculo automático habilitado cuando ingresan respuestas 0–10 válidas).
 4. **Capa `audit/` (`input/audit/`)**:
    - Registra `audit_ejecuciones_etl`, `audit_hashes_fuentes_bronze`, `audit_registros_duplicados` (122 registros clasificados), `audit_registros_rechazados`, `audit_calidad_datos`, `audit_reconciliacion_origen_destino` y `audit_cargas`.
-5. **Persistencia en PostgreSQL (`app/modules/eda/models.py` y `postgres_loader.py`)**:
+5. **Persistencia en PostgreSQL (`app/modules/eda/models/` y `postgres_loader.py`)**:
    - Reutiliza el motor y sesiones centralizadas de `app/database.py`.
    - Gestiona el esquema mediante SQLAlchemy ORM y migraciones **Alembic** (`alembic.ini`, `migrations/versions/rev_0001_initial_medallion_actho360.py`).
    - Ejecuta inserciones masivas con `ON CONFLICT DO UPDATE` dentro de una única transacción atómica (con `rollback` automático ante cualquier error de integridad o conexión).

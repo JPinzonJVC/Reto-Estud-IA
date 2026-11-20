@@ -43,7 +43,7 @@ Retos_StudIA/
 │   │   │   ├── silver.py                  # Modelo dimensional puro y captura de rechazados
 │   │   │   ├── gold.py                    # Agregaciones analíticas, preparación NPS y semáforo
 │   │   │   ├── audit.py                   # Bitácoras de calidad, duplicados, rechazados y reconciliación
-│   │   │   ├── models.py                  # 18 modelos SQLAlchemy ORM (Silver, Gold y Audit)
+│   │   │   ├── models/                    # Paquete con los 18 modelos SQLAlchemy ORM y atributos documentados
 │   │   │   ├── postgres_loader.py         # Carga masiva transaccional con UPSERT idempotente
 │   │   │   └── pipeline.py                # Orquestador ejecutable del pipeline Medallion
 │   │   ├── retention/                 # Módulo de Retención y Fidelización (Consume Gold)

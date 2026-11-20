@@ -8,8 +8,10 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.modules.eda.config import cargar_configuracion
-from app.modules.eda.models import (
+from app.modules.eda.models.gold_agg_participacion_empresa import (
     GoldAggParticipacionEmpresa,
+)
+from app.modules.eda.models.gold_agg_retencion_empresa import (
     GoldAggRetencionEmpresa,
 )
 

@@ -7,7 +7,9 @@ import pandas as pd
 from sqlalchemy.orm import Session
 
 from app.modules.eda.config import cargar_configuracion
-from app.modules.eda.models import GoldAggRetencionEmpresa
+from app.modules.eda.models.gold_agg_retencion_empresa import (
+    GoldAggRetencionEmpresa,
+)
 
 logger = logging.getLogger(__name__)
 
