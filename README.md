@@ -35,16 +35,19 @@ Retos_StudIA/
 │   ├── database.py                    # Conexión, motor y sesiones PostgreSQL (SQLAlchemy)
 │   ├── main.py                        # Entrypoint FastAPI y vistas Jinja2
 │   ├── modules/
-│   │   ├── eda/                           # Pipeline ETL Medallion (Bronze -> Silver -> Gold -> Audit)
+│   │   ├── eda/                           # Pipeline ETL Medallion (Bronze -> Silver -> Gold -> Audit -> PostgreSQL)
 │   │   │   ├── config.py                  # Configuración portable hacia input/
 │   │   │   ├── etl_config.json            # Parámetros de negocio y rutas Medallion
 │   │   │   ├── bronze.py                  # Ingesta y verificación SHA-256
 │   │   │   ├── scd2.py                    # Reconstrucción histórica SCD Tipo 2
-│   │   │   ├── silver.py                  # Modelo dimensional puro (Dimensiones y Hechos)
-│   │   │   ├── gold.py                    # Agregaciones analíticas y semáforo heurístico
-│   │   │   ├── audit.py                   # Bitácoras de calidad, duplicados y reconciliación
+│   │   │   ├── silver.py                  # Modelo dimensional puro y captura de rechazados
+│   │   │   ├── gold.py                    # Agregaciones analíticas, preparación NPS y semáforo
+│   │   │   ├── audit.py                   # Bitácoras de calidad, duplicados, rechazados y reconciliación
+│   │   │   ├── models.py                  # 18 modelos SQLAlchemy ORM (Silver, Gold y Audit)
+│   │   │   ├── postgres_loader.py         # Carga masiva transaccional con UPSERT idempotente
 │   │   │   └── pipeline.py                # Orquestador ejecutable del pipeline Medallion
-│   │   ├── retention/                 # Módulo de Retención y Fidelización
+│   │   ├── retention/                 # Módulo de Retención y Fidelización (Consume Gold)
+│   │   │   ├── repository.py          # Consultas SQL/Parquet sobre gold_agg_retencion_empresa
 │   │   │   ├── router.py              # Endpoints REST de retención
 │   │   │   ├── service.py             # Lógica y orquestación de negocio
 │   │   │   └── risk_engine.py         # Motor de riesgo y recomendaciones
@@ -54,9 +57,13 @@ Retos_StudIA/
 │   │   │   ├── training.py            # Entrenamiento y guardado de modelos
 │   │   │   ├── prediction.py          # Inferencia (Churn y Clustering)
 │   │   │   └── models/                # Artefactos serializados (.pkl)
-│   │   ├── analytics/                 # Módulo de Analítica y Métricas
+│   │   ├── analytics/                 # Módulo de Analítica y Métricas (Consume Gold)
+│   │   │   ├── repository.py          # Consultas sobre gold_agg_participacion y satisfaccion
+│   │   │   ├── service.py             # Servicio de indicadores analíticos
 │   │   │   └── router.py
-│   │   └── affiliates/                # Módulo de Red de Afiliados
+│   │   └── affiliates/                # Módulo de Red de Afiliados (Consume Gold)
+│   │       ├── repository.py          # Consultas sobre empresas afiliadas y participación
+│   │       ├── service.py             # Servicio de desempeño de afiliados
 │   │       └── router.py
 │   ├── templates/                     # Plantillas HTML con Jinja2
 │   │   ├── dashboard/index.html
@@ -81,11 +88,17 @@ Retos_StudIA/
 ├── docs/                              # Documentación técnica del EDA y Modelo Medallion
 │   ├── README_EDA_MEDALLION_ACTHO360.md
 │   └── DOCUMENTACION_MODELO_REFACTORIZADO.md
+├── migrations/                        # Migraciones Alembic del esquema Medallion
+│   ├── env.py
+│   └── versions/
+│       └── rev_0001_initial_medallion_actho360.py
 ├── scripts/
 │   ├── flake8_run.py                  # Script de validación PEP 8 (90 chars)
 │   └── pylint_run.py                  # Script de análisis estático con pylint-exit
-├── tests/                             # Suite de pruebas unitarias
+├── tests/                             # Suite de pruebas unitarias e integración
 │   ├── test_database.py               # Pruebas de configuración y conexión a base de datos
+│   ├── test_modelo_dimensional.py     # 10 pruebas del modelo dimensional Medallion
+│   ├── test_postgres_medallion.py     # Pruebas de persistencia PostgreSQL, UPSERT, rollback y Backend Gold
 │   ├── test_features.py               # Pruebas de extracción de variables
 │   ├── test_preprocessing.py          # Pruebas de transformaciones
 │   ├── test_risk_engine.py            # Pruebas de motor de riesgo

@@ -1,5 +1,6 @@
-"""Gestión de bitácoras de auditoría, calidad de datos y reconciliación Medallion."""
+"""Gestión de bitácoras de auditoría, rechazados, calidad y reconciliación Medallion."""
 
+import json
 from datetime import datetime
 from typing import Any
 
@@ -11,13 +12,15 @@ from app.modules.eda.config import ConfiguracionETL
 
 
 class BitacoraAuditoria:
-    """Acumulador de registros de cargas ETL e incidencias de calidad de datos.
+    """Acumulador de cargas ETL, rechazados, errores e incidencias de calidad.
 
     Attributes:
         run_id: Identificador único de la ejecución ETL.
         fecha_corte: Fecha de corte del modelo analítico.
         registros_calidad: Lista de incidencias de calidad registradas.
         registros_cargas: Lista de ejecuciones de carga por tabla.
+        registros_rechazados: Lista de registros rechazados con su motivo.
+        errores: Lista de errores capturados durante la ejecución.
 
     """
 
@@ -33,6 +36,8 @@ class BitacoraAuditoria:
         self.fecha_corte: str = fecha_corte
         self.registros_calidad: list[dict[str, Any]] = []
         self.registros_cargas: list[dict[str, Any]] = []
+        self.registros_rechazados: list[dict[str, Any]] = []
+        self.errores: list[str] = []
 
     def registrar_carga(
         self,
@@ -109,6 +114,88 @@ class BitacoraAuditoria:
                 "estado_resolucion": estado,
             }
         )
+
+    def registrar_rechazo(
+        self,
+        tabla: str,
+        archivo_origen: str,
+        motivo: str,
+        payload: dict[str, Any],
+    ) -> None:
+        """Conserva un registro rechazado junto con su motivo y fuente Bronze.
+
+        Args:
+            tabla: Tabla Silver donde se detectó el rechazo.
+            archivo_origen: Archivo Bronze de origen.
+            motivo: Motivo detallado del rechazo.
+            payload: Diccionario con los datos originales del registro.
+
+        """
+        idx = len(self.registros_rechazados) + 1
+        serializado = json.dumps(payload, default=str, ensure_ascii=False)
+        self.registros_rechazados.append(
+            {
+                "id_rechazo": f"REJ-{idx:04d}",
+                "id_ejecucion": self.run_id,
+                "tabla_destino": tabla,
+                "archivo_origen_bronze": archivo_origen,
+                "motivo_rechazo": motivo,
+                "registro_original_json": serializado,
+                "fecha_corte_modelo": self.fecha_corte,
+            }
+        )
+
+
+def filtrar_registros_rechazados(
+    df: pd.DataFrame,
+    tabla: str,
+    pk_cols: list[str],
+    archivo_origen: str,
+    bitacora: BitacoraAuditoria,
+) -> tuple[pd.DataFrame, int]:
+    """Filtra y conserva en auditoría filas con claves primarias nulas o duplicadas.
+
+    Args:
+        df: DataFrame de entrada a validar.
+        tabla: Nombre de la tabla Silver destino.
+        pk_cols: Lista de columnas que conforman la clave primaria.
+        archivo_origen: Nombre del archivo Bronze de origen.
+        bitacora: Bitácora de auditoría activa.
+
+    Returns:
+        Tupla con el DataFrame válido depurado y la cantidad de filas rechazadas.
+
+    """
+    mask_pk_nula = df[pk_cols].isna().any(axis=1)
+    for col in pk_cols:
+        mask_vacia = df[col].astype(str).str.strip().isin(["", "nan", "None", "<NA>"])
+        mask_pk_nula = mask_pk_nula | (df[col].isna() | mask_vacia)
+
+    rechazados_cnt = 0
+    if mask_pk_nula.any():
+        for _, row in df[mask_pk_nula].iterrows():
+            bitacora.registrar_rechazo(
+                tabla=tabla,
+                archivo_origen=archivo_origen,
+                motivo=f"CLAVE_PRIMARIA_NULA_O_VACIA ({','.join(pk_cols)})",
+                payload={str(k): v for k, v in row.to_dict().items()},
+            )
+            rechazados_cnt += 1
+
+    df_valido = df[~mask_pk_nula].copy()
+    mask_dup_pk = df_valido.duplicated(subset=pk_cols, keep="first")
+    if mask_dup_pk.any():
+        for _, row in df_valido[mask_dup_pk].iterrows():
+            bitacora.registrar_rechazo(
+                tabla=tabla,
+                archivo_origen=archivo_origen,
+                motivo=f"CLAVE_PRIMARIA_DUPLICADA ({','.join(pk_cols)})",
+                payload={str(k): v for k, v in row.to_dict().items()},
+            )
+            rechazados_cnt += 1
+        df_valido = df_valido[~mask_dup_pk].copy()
+
+    return df_valido.reset_index(drop=True), rechazados_cnt
 
 
 def _clasificar_categoria_duplicado(tipo: Any) -> str:
@@ -196,6 +283,7 @@ def _fila_reconciliacion(
     df_b: pd.DataFrame,
     df_s: pd.DataFrame,
     explicacion: str,
+    rechazados: int = 0,
 ) -> dict[str, Any]:
     """Crea un diccionario de reconciliación de conteos entre Bronze y Silver.
 
@@ -204,6 +292,7 @@ def _fila_reconciliacion(
         df_b: DataFrame en la capa Bronze.
         df_s: DataFrame en la capa Silver/Audit.
         explicacion: Nota técnica de reconciliación.
+        rechazados: Cantidad de filas rechazadas en Silver para esa tabla.
 
     Returns:
         Diccionario con conteos de filas, columnas y diferencias.
@@ -215,9 +304,34 @@ def _fila_reconciliacion(
         "Cols_Bronze": df_b.shape[1],
         "Filas_Silver": len(df_s),
         "Cols_Silver": df_s.shape[1],
-        "Diferencia_Filas": len(df_s) - len(df_b),
+        "Filas_Rechazadas": int(rechazados),
+        "Diferencia_Filas": (len(df_s) + int(rechazados)) - len(df_b),
         "Explicacion_Reconciliacion": explicacion,
     }
+
+
+def _construir_df_rechazados(bitacora: BitacoraAuditoria) -> pd.DataFrame:
+    """Construye el DataFrame de registros rechazados con esquema fijo.
+
+    Args:
+        bitacora: Bitácora de auditoría con la lista de rechazados.
+
+    Returns:
+        DataFrame con las columnas de audit_registros_rechazados.
+
+    """
+    cols = [
+        "id_rechazo",
+        "id_ejecucion",
+        "tabla_destino",
+        "archivo_origen_bronze",
+        "motivo_rechazo",
+        "registro_original_json",
+        "fecha_corte_modelo",
+    ]
+    if not bitacora.registros_rechazados:
+        return pd.DataFrame(columns=cols)
+    return pd.DataFrame(bitacora.registros_rechazados)[cols]
 
 
 def persistir_auditoria_final(
@@ -226,22 +340,30 @@ def persistir_auditoria_final(
     df_audit_dup: pd.DataFrame,
     cfg: ConfiguracionETL,
     bitacora: BitacoraAuditoria,
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Genera y persiste las tablas finales de calidad, reconciliación y cargas.
+) -> dict[str, pd.DataFrame]:
+    """Persiste las tablas de calidad, rechazados, reconciliación y cargas.
 
     Args:
         bronze: Diccionario de DataFrames de la capa Bronze.
         silver: Diccionario de DataFrames de la capa Silver.
         df_audit_dup: DataFrame de auditoría de duplicados.
         cfg: Configuración del pipeline ETL Medallion.
-        bitacora: Bitácora de auditoría con incidencias y cargas.
+        bitacora: Bitácora de auditoría con incidencias, rechazados y cargas.
 
     Returns:
-        Tupla con (df_audit_calidad, reconciliacion, df_audit_cargas).
+        Diccionario con los DataFrames de auditoría generados.
 
     """
     df_audit_calidad = pd.DataFrame(bitacora.registros_calidad)
     guardar_tabla_medallion(df_audit_calidad, cfg.audit_dir, "audit_calidad_datos")
+
+    df_rechazados = _construir_df_rechazados(bitacora)
+    guardar_tabla_medallion(df_rechazados, cfg.audit_dir, "audit_registros_rechazados")
+
+    rech_por_tabla: dict[str, int] = {}
+    if not df_rechazados.empty:
+        conteos = df_rechazados["tabla_destino"].value_counts().to_dict()
+        rech_por_tabla = {str(k): int(v) for k, v in conteos.items()}
 
     n_scd2 = len(silver["dim_empresas_scd2"])
     reconciliacion = pd.DataFrame(
@@ -250,55 +372,63 @@ def persistir_auditoria_final(
                 "dim_kams",
                 bronze["dim_kams"],
                 silver["dim_kams"],
-                "100% filas conservadas; métricas movidas a "
+                "100% filas válidas conservadas; métricas movidas a "
                 "audit_metricas_origen_kams; Sin asignar homologado a KAM-UNASSIGNED",
+                rech_por_tabla.get("dim_kams", 0),
             ),
             _fila_reconciliacion(
                 "dim_empresas",
                 bronze["dim_empresas"],
                 silver["dim_empresas"],
-                f"100% filas conservadas; métricas movidas a Gold/Auditoría; "
+                f"100% filas válidas conservadas; métricas movidas a Gold/Auditoría; "
                 f"historial en dim_empresas_scd2 ({n_scd2} filas)",
+                rech_por_tabla.get("dim_empresas", 0),
             ),
             _fila_reconciliacion(
                 "dim_personas",
                 bronze["dim_personas"],
                 silver["dim_personas"],
-                "100% filas conservadas; métricas movidas a "
+                "100% filas válidas conservadas; métricas movidas a "
                 "audit_metricas_origen_personas",
+                rech_por_tabla.get("dim_personas", 0),
             ),
             _fila_reconciliacion(
                 "dim_eventos",
                 bronze["dim_eventos"],
                 silver["dim_eventos"],
-                "100% filas conservadas; métricas de origen movidas a "
+                "100% filas válidas conservadas; métricas de origen movidas a "
                 "audit_metricas_origen_eventos",
+                rech_por_tabla.get("dim_eventos", 0),
             ),
             _fila_reconciliacion(
                 "fact_asistencias",
                 bronze["fact_asistencias"],
                 silver["fact_asistencias"],
-                "100% filas conservadas; kam_id homologado a KAM-UNASSIGNED; "
+                "100% filas válidas conservadas; kam_id homologado a KAM-UNASSIGNED; "
                 "15 filas sin empresa clasificadas",
+                rech_por_tabla.get("fact_asistencias", 0),
             ),
             _fila_reconciliacion(
                 "fact_encuestas_satisfaccion",
                 bronze["fact_encuestas_satisfaccion"],
                 silver["fact_encuestas_satisfaccion"],
-                "100% filas conservadas; sin inferencia de eventos ni NPS ficticio",
+                "100% filas válidas conservadas; sin inferencia de eventos ni NPS",
+                rech_por_tabla.get("fact_encuestas_satisfaccion", 0),
             ),
             _fila_reconciliacion(
                 "fact_movimientos_crm",
                 bronze["fact_movimientos_crm"],
                 silver["fact_movimientos_crm"],
-                "100% filas conservadas; creada PK id_movimiento y clasificados "
-                "nulos de expiración",
+                "100% filas válidas conservadas; creada PK id_movimiento y "
+                "clasificados nulos de expiración",
+                rech_por_tabla.get("fact_movimientos_crm", 0),
             ),
             _fila_reconciliacion(
                 "audit_registros_duplicados",
                 bronze["registros_duplicados"],
                 df_audit_dup,
                 "100% filas conservadas con trazabilidad y clasificación",
+                0,
             ),
         ]
     )
@@ -308,4 +438,9 @@ def persistir_auditoria_final(
 
     df_audit_cargas = pd.DataFrame(bitacora.registros_cargas)
     guardar_tabla_medallion(df_audit_cargas, cfg.audit_dir, "audit_cargas")
-    return df_audit_calidad, reconciliacion, df_audit_cargas
+    return {
+        "calidad": df_audit_calidad,
+        "rechazados": df_rechazados,
+        "reconciliacion": reconciliacion,
+        "cargas": df_audit_cargas,
+    }

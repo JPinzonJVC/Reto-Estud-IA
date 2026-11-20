@@ -1,6 +1,7 @@
 """Módulo de ingesta, persistencia Parquet/CSV y validación SHA-256 para capa Bronze."""
 
 import hashlib
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -116,11 +117,15 @@ def _sincronizar_archivo_bronze(ruta_src: Path, ruta_dst: Path, nombre: str) -> 
 
 def ingerir_y_validar_bronze(
     cfg: ConfiguracionETL,
+    run_id: str | None = None,
+    ts_ingesta: str | None = None,
 ) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
     """Valida existencia e integridad de fuentes y registra hashes SHA-256 en Bronze.
 
     Args:
         cfg: Configuración del pipeline ETL Medallion.
+        run_id: Identificador de la ejecución ETL actual.
+        ts_ingesta: Fecha y hora ISO de la ingesta en Bronze.
 
     Returns:
         Tupla con el diccionario de DataFrames leídos y el DataFrame de hashes.
@@ -131,6 +136,9 @@ def ingerir_y_validar_bronze(
 
     """
     cfg.asegurar_directorios()
+    id_ejec = run_id or f"ETL-ACTHO360-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    fecha_ingesta = ts_ingesta or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
     mapa_origen: dict[str, Path] = {
         nombre: cfg.origen_normalizados_dir / f"{nombre}.csv"
         for nombre in ARCHIVOS_REQUERIDOS_ORIGEN
@@ -157,6 +165,8 @@ def ingerir_y_validar_bronze(
         bronze_dfs[nombre] = df_leido
         hashes_rows.append(
             {
+                "id_ejecucion": id_ejec,
+                "fecha_hora_ingesta": fecha_ingesta,
                 "tabla_fuente": nombre,
                 "archivo_nombre": ruta_src.name,
                 "bytes_origen": int(tamano_bytes),

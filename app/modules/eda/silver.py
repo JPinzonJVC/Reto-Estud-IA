@@ -6,7 +6,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from app.modules.eda.audit import BitacoraAuditoria
+from app.modules.eda.audit import BitacoraAuditoria, filtrar_registros_rechazados
 from app.modules.eda.bronze import guardar_tabla_medallion, homologar_kam_id
 from app.modules.eda.config import ConfiguracionETL
 from app.modules.eda.scd2 import construir_dim_empresas_scd2
@@ -101,6 +101,9 @@ def _procesar_dim_kams(
             "es_kam_asignado": kam_hom != cfg.kam_sin_asignar_id,
         }
     )
+    df_kams_silver, rech = filtrar_registros_rechazados(
+        df_kams_silver, "dim_kams", ["kam_id"], "dim_kams.csv", bitacora
+    )
     guardar_tabla_medallion(df_kams_silver, cfg.silver_dir, "dim_kams")
     bitacora.registrar_calidad(
         "dim_kams",
@@ -127,6 +130,7 @@ def _procesar_dim_kams(
         proc=len(df_kams_silver),
         ins=len(df_kams_silver),
         act=1,
+        rech=rech,
     )
     return df_kams_silver
 
@@ -177,6 +181,9 @@ def _procesar_dim_empresas(
     )
     cols_disp = [c for c in COLS_DESCRIPTIVAS_EMPRESA if c in df_emp_silver.columns]
     df_emp_silver = df_emp_silver[cols_disp]
+    df_emp_silver, rech = filtrar_registros_rechazados(
+        df_emp_silver, "dim_empresas", ["id_empresa"], "dim_empresas.csv", bitacora
+    )
     guardar_tabla_medallion(df_emp_silver, cfg.silver_dir, "dim_empresas")
 
     df_emp_scd2 = construir_dim_empresas_scd2(
@@ -223,6 +230,7 @@ def _procesar_dim_empresas(
         proc=len(df_emp_silver),
         ins=len(df_emp_silver),
         act=cnt_sin_asig,
+        rech=rech,
     )
     return df_emp_silver, df_emp_scd2
 
@@ -263,7 +271,6 @@ def _procesar_dim_personas_y_eventos(
         df_per_orig[cols_m_per], cfg.audit_dir, "audit_metricas_origen_personas"
     )
 
-    n_per_sin_emp = int(df_per_orig["id_empresa_principal"].isna().sum())
     df_per_silver = pd.DataFrame(
         {
             "id_persona": df_per_orig["id_persona"],
@@ -281,6 +288,10 @@ def _procesar_dim_personas_y_eventos(
             "fecha_afiliacion_nueva": df_per_orig["fecha_afiliacion_nueva"],
         }
     )
+    df_per_silver, rech_per = filtrar_registros_rechazados(
+        df_per_silver, "dim_personas", ["id_persona"], "dim_personas.csv", bitacora
+    )
+    n_per_sin_emp = int(df_per_silver["id_empresa_principal"].isna().sum())
     guardar_tabla_medallion(df_per_silver, cfg.silver_dir, "dim_personas")
     bitacora.registrar_calidad(
         "dim_personas",
@@ -298,6 +309,7 @@ def _procesar_dim_personas_y_eventos(
         proc=len(df_per_silver),
         ins=len(df_per_silver),
         act=0,
+        rech=rech_per,
     )
 
     t1 = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -321,6 +333,9 @@ def _procesar_dim_personas_y_eventos(
         if c in df_ev_orig.columns
     ]
     df_ev_silver = df_ev_orig[cols_ev].copy()
+    df_ev_silver, rech_ev = filtrar_registros_rechazados(
+        df_ev_silver, "dim_eventos", ["id_evento"], "dim_eventos.csv", bitacora
+    )
     guardar_tabla_medallion(df_ev_silver, cfg.silver_dir, "dim_eventos")
     bitacora.registrar_carga(
         "bronze/dim_eventos -> silver/dim_eventos",
@@ -329,6 +344,7 @@ def _procesar_dim_personas_y_eventos(
         proc=len(df_ev_silver),
         ins=len(df_ev_silver),
         act=0,
+        rech=rech_ev,
     )
     return df_per_silver, df_ev_silver
 
@@ -354,7 +370,6 @@ def _procesar_fact_asistencias(
     t0 = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     df_asist_orig = bronze["fact_asistencias"].copy()
     ev_mod_map = df_ev_silver.set_index("id_evento")["modalidad"].to_dict()
-    n_sin_emp = int(df_asist_orig["id_empresa"].isna().sum())
     n_kam_hom = int(df_asist_orig["kam_id"].isin(cfg.valores_origen_sin_asignar).sum())
 
     df_asist_silver = df_asist_orig.copy()
@@ -373,6 +388,14 @@ def _procesar_fact_asistencias(
         "IDENTIDAD_COMPLETA",
         "PENDIENTE_RESOLUCION_EMPRESA",
     )
+    df_asist_silver, rech = filtrar_registros_rechazados(
+        df_asist_silver,
+        "fact_asistencias",
+        ["id_asistencia"],
+        "fact_asistencias.csv",
+        bitacora,
+    )
+    n_sin_emp = int(df_asist_silver["id_empresa"].isna().sum())
     guardar_tabla_medallion(df_asist_silver, cfg.silver_dir, "fact_asistencias")
 
     bitacora.registrar_calidad(
@@ -403,6 +426,7 @@ def _procesar_fact_asistencias(
         proc=len(df_asist_silver),
         ins=len(df_asist_silver),
         act=n_kam_hom,
+        rech=rech,
     )
     _guardar_audit_metricas_eventos(bronze["dim_eventos"], df_asist_silver, cfg)
     return df_asist_silver
@@ -516,8 +540,6 @@ def _procesar_encuestas_y_movimientos(
     """
     t0 = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     df_enc_orig = bronze["fact_encuestas_satisfaccion"].copy()
-    n_sin_per = int(df_enc_orig["id_persona"].isna().sum())
-    n_sin_emp = int(df_enc_orig["id_empresa"].isna().sum())
 
     df_enc_silver = df_enc_orig.copy()
     df_enc_silver.insert(
@@ -531,6 +553,15 @@ def _procesar_encuestas_y_movimientos(
         [np.nan] * len(df_enc_silver), dtype="float64"
     )
     df_enc_silver["categoria_nps_0_10"] = "NO_DISPONIBLE_ESCALA_1_5"
+    df_enc_silver, rech_enc = filtrar_registros_rechazados(
+        df_enc_silver,
+        "fact_encuestas_satisfaccion",
+        ["id_respuesta"],
+        "fact_encuestas_satisfaccion.csv",
+        bitacora,
+    )
+    n_sin_per = int(df_enc_silver["id_persona"].isna().sum())
+    n_sin_emp = int(df_enc_silver["id_empresa"].isna().sum())
     guardar_tabla_medallion(df_enc_silver, cfg.silver_dir, "fact_encuestas_satisfaccion")
     bitacora.registrar_calidad(
         "fact_encuestas_satisfaccion",
@@ -554,6 +585,7 @@ def _procesar_encuestas_y_movimientos(
         proc=len(df_enc_silver),
         ins=len(df_enc_silver),
         act=0,
+        rech=rech_enc,
     )
 
     t1 = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -577,6 +609,13 @@ def _procesar_encuestas_y_movimientos(
     df_mov_silver["clasificacion_fecha_expiracion"] = df_mov_silver.apply(
         _clasificar_expiracion_nula, axis=1
     )
+    df_mov_silver, rech_mov = filtrar_registros_rechazados(
+        df_mov_silver,
+        "fact_movimientos_crm",
+        ["id_movimiento"],
+        "fact_movimientos_crm.csv",
+        bitacora,
+    )
     guardar_tabla_medallion(df_mov_silver, cfg.silver_dir, "fact_movimientos_crm")
     bitacora.registrar_carga(
         "bronze/fact_movimientos_crm -> silver/fact_movimientos_crm",
@@ -585,6 +624,7 @@ def _procesar_encuestas_y_movimientos(
         proc=len(df_mov_silver),
         ins=len(df_mov_silver),
         act=len(df_mov_silver),
+        rech=rech_mov,
     )
     return df_enc_silver, df_mov_silver
 

@@ -253,8 +253,23 @@ def construir_agg_satisfaccion_encuestas(
     ):
         agg_sat[col_m] = agg_sat[col_m].round(2)
 
-    agg_sat["nps_oficial_0_10"] = np.nan
-    agg_sat["estado_calculo_nps"] = "NO_CALCULABLE_SIN_PREGUNTA_RECOMENDACION_0_10"
+    def _calcular_nps_fila(row: pd.Series) -> float:
+        prom = row["promotores_nps_0_10"]
+        pas = row["pasivos_nps_0_10"]
+        det = row["detractores_nps_0_10"]
+        if pd.isna(prom) or pd.isna(pas) or pd.isna(det):
+            return float("nan")
+        total_nps = int(prom) + int(pas) + int(det)
+        if total_nps <= 0:
+            return float("nan")
+        return round(((int(prom) - int(det)) / total_nps) * 100.0, 2)
+
+    agg_sat["nps_oficial_0_10"] = agg_sat.apply(_calcular_nps_fila, axis=1)
+    agg_sat["estado_calculo_nps"] = np.where(
+        agg_sat["nps_oficial_0_10"].notna(),
+        "CALCULADO_ENCUESTA_RECOMENDACION_0_10",
+        "NO_CALCULABLE_SIN_PREGUNTA_RECOMENDACION_0_10",
+    )
     agg_sat["asociacion_evento_origen"] = "NO_DISPONIBLE_EN_FUENTE_ENCUESTAS"
     guardar_tabla_medallion(agg_sat, cfg.gold_dir, "agg_satisfaccion_encuestas")
     bitacora.registrar_carga(
