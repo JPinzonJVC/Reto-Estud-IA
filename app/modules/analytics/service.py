@@ -20,29 +20,17 @@ class AnalyticsService:
         self.repository = repository or AnalyticsRepository()
 
     def get_metrics(self, session: Session | None = None) -> dict[str, Any]:
-        """Obtiene métricas globales de analítica integradas con la capa Gold.
+        """Obtiene métricas globales de analítica calculadas directamente desde Gold.
 
         Args:
             session: Sesión opcional de SQLAlchemy.
 
         Returns:
-            Diccionario con métricas de actividad, embudo y satisfacción Gold.
+            Diccionario con métricas reales de participación y satisfacción Gold.
 
         """
         repo = AnalyticsRepository(session) if session else self.repository
-        gold_metrics = repo.obtener_metricas_analitica()
-        asistencias = int(gold_metrics.get("total_asistencias", 0)) or 3420
-        respuestas = int(gold_metrics.get("total_respuestas_encuestas", 0)) or 725
-        return {
-            "daily_active_users": asistencias,
-            "weekly_retention_rate": 0.82,
-            "conversion_funnel": {
-                "views": 15000,
-                "signups": asistencias,
-                "active_subscriptions": respuestas,
-            },
-            **gold_metrics,
-        }
+        return repo.obtener_metricas_analitica()
 
     def get_satisfaction_breakdown(
         self, session: Session | None = None

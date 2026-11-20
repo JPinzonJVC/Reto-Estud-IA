@@ -44,26 +44,17 @@ class RetentionService:
         )
 
     def get_retention_overview(self, session: Session | None = None) -> dict[str, Any]:
-        """Genera métricas consolidadas del panel de retención desde la capa Gold.
+        """Genera métricas consolidadas de retención calculadas directamente desde Gold.
 
         Args:
             session: Sesión opcional de SQLAlchemy.
 
         Returns:
-            Resumen estadístico de empresas evaluadas, semáforo y vencimientos.
+            Resumen estadístico real de empresas, semáforo heurístico y vencimientos.
 
         """
         repo = RetentionRepository(session) if session else self.repository
-        resumen_gold = repo.obtener_resumen_retencion()
-        total_eval = int(resumen_gold.get("total_empresas", 0)) or 1250
-        alto_riesgo = int(resumen_gold.get("riesgo_rojo_alto", 0)) or 85
-        return {
-            "total_evaluated": total_eval,
-            "high_risk_count": alto_riesgo,
-            "average_churn_rate": 0.068,
-            "active_campaigns": 3,
-            **resumen_gold,
-        }
+        return repo.obtener_resumen_retencion()
 
     def get_companies_by_risk(
         self,

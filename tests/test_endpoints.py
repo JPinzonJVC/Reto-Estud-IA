@@ -23,10 +23,12 @@ class TestEndpoints(unittest.TestCase):
         self.assertEqual(res["app"], "Reto EstudIA")
 
     def test_retention_overview(self) -> None:
-        """Verifica la respuesta del resumen del módulo de retención."""
+        """Verifica la respuesta del resumen del módulo de retención desde Gold."""
         overview = get_overview()
-        self.assertIn("total_evaluated", overview)
-        self.assertIn("high_risk_count", overview)
+        self.assertIn("total_empresas", overview)
+        self.assertIn("membresias_activas", overview)
+        self.assertIn("riesgo_rojo_alto", overview)
+        self.assertIn("fuente_datos", overview)
 
     def test_retention_evaluate_customer(self) -> None:
         """Verifica la evaluación puntual de un cliente vía endpoint."""
@@ -39,16 +41,19 @@ class TestEndpoints(unittest.TestCase):
         self.assertIn("risk_level", eval_res)
 
     def test_analytics_metrics(self) -> None:
-        """Verifica métricas cuantitativas del módulo de analítica."""
+        """Verifica métricas cuantitativas del módulo de analítica desde Gold."""
         metrics = get_analytics_metrics()
-        self.assertIn("daily_active_users", metrics)
-        self.assertIn("conversion_funnel", metrics)
+        self.assertIn("total_asistencias", metrics)
+        self.assertIn("total_respuestas_encuestas", metrics)
+        self.assertIn("promedio_satisfaccion_general_1_5", metrics)
+        self.assertIn("participacion_por_modalidad", metrics)
 
     def test_affiliates_summary(self) -> None:
-        """Verifica el resumen de la red de afiliados."""
+        """Verifica el resumen de la red de afiliados desde Gold."""
         summary = get_affiliates_summary()
-        self.assertIn("active_affiliates", summary)
-        self.assertIn("commission_paid_usd", summary)
+        self.assertIn("total_empresas", summary)
+        self.assertIn("afiliados_activos_crm", summary)
+        self.assertIn("empresas_con_participacion", summary)
 
     def test_render_dashboard(self) -> None:
         """Verifica la renderización de la vista principal del dashboard."""

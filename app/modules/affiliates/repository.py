@@ -40,13 +40,23 @@ class AffiliatesRepository:
         if self.session is None:
             return None
         try:
-            total_emp = int(self.session.query(GoldAggRetencionEmpresa).count())
+            q_ret = self.session.query(GoldAggRetencionEmpresa)
+            total_emp = int(q_ret.count())
             if total_emp == 0:
                 return None
+            en_crm = int(
+                q_ret.filter(GoldAggRetencionEmpresa.en_crm_afiliados.is_(True)).count()
+            )
             activas = int(
-                self.session.query(GoldAggRetencionEmpresa)
-                .filter(GoldAggRetencionEmpresa.es_membresia_activa.is_(True))
-                .count()
+                q_ret.filter(
+                    GoldAggRetencionEmpresa.es_membresia_activa.is_(True)
+                ).count()
+            )
+            renovaciones = int(
+                self.session.query(
+                    func.sum(GoldAggRetencionEmpresa.renovaciones_registradas_2026)
+                ).scalar()
+                or 0
             )
             con_part = int(
                 self.session.query(GoldAggParticipacionEmpresa)
@@ -61,9 +71,12 @@ class AffiliatesRepository:
             )
             return {
                 "total_empresas": total_emp,
+                "empresas_en_crm": en_crm,
+                "prospectos_sin_crm": total_emp - en_crm,
                 "afiliados_activos_crm": activas,
                 "empresas_con_participacion": con_part,
                 "total_asistencias_eventos": total_asist,
+                "renovaciones_registradas_2026": renovaciones,
                 "fuente_datos": "postgresql",
             }
         except Exception as exc:
@@ -74,7 +87,7 @@ class AffiliatesRepository:
         """Obtiene el resumen consolidado de afiliados desde Gold (DB o Parquet).
 
         Returns:
-            Diccionario con conteos de empresas afiliadas y participación.
+            Diccionario con conteos reales de empresas afiliadas y participación.
 
         """
         desde_db = self._leer_desde_db()
@@ -87,22 +100,32 @@ class AffiliatesRepository:
         if ruta_ret.exists() and ruta_part.exists():
             df_ret = pd.read_parquet(ruta_ret)
             df_part = pd.read_parquet(ruta_part)
+            total_emp = int(len(df_ret))
+            en_crm = int(df_ret["en_crm_afiliados"].astype(bool).sum())
             return {
-                "total_empresas": int(len(df_ret)),
+                "total_empresas": total_emp,
+                "empresas_en_crm": en_crm,
+                "prospectos_sin_crm": total_emp - en_crm,
                 "afiliados_activos_crm": int(
                     df_ret["es_membresia_activa"].astype(bool).sum()
                 ),
                 "empresas_con_participacion": int((df_part["total_eventos"] > 0).sum()),
                 "total_asistencias_eventos": int(df_part["total_asistencias"].sum()),
+                "renovaciones_registradas_2026": int(
+                    df_ret["renovaciones_registradas_2026"].sum()
+                ),
                 "fuente_datos": "gold_parquet",
             }
 
         return {
             "total_empresas": 0,
+            "empresas_en_crm": 0,
+            "prospectos_sin_crm": 0,
             "afiliados_activos_crm": 0,
             "empresas_con_participacion": 0,
             "total_asistencias_eventos": 0,
-            "fuente_datos": "fallback_default",
+            "renovaciones_registradas_2026": 0,
+            "fuente_datos": "sin_datos",
         }
 
     def listar_participacion_empresas(self, limit: int = 20) -> list[dict[str, Any]]:

@@ -20,25 +20,17 @@ class AffiliatesService:
         self.repository = repository or AffiliatesRepository()
 
     def get_summary(self, session: Session | None = None) -> dict[str, Any]:
-        """Obtiene el resumen de afiliados combinando datos Gold y estructura API.
+        """Obtiene el resumen de afiliados calculado directamente desde la capa Gold.
 
         Args:
             session: Sesión opcional de SQLAlchemy.
 
         Returns:
-            Diccionario con métricas de afiliados activos y participación.
+            Diccionario con métricas reales de afiliados activos y participación.
 
         """
         repo = AffiliatesRepository(session) if session else self.repository
-        resumen = repo.obtener_resumen_afiliados()
-        activos = int(resumen.get("afiliados_activos_crm", 0)) or 48
-        asistencias = int(resumen.get("total_asistencias_eventos", 0)) or 620
-        return {
-            "active_affiliates": activos,
-            "monthly_referrals": asistencias,
-            "commission_paid_usd": 12400.0,
-            **resumen,
-        }
+        return repo.obtener_resumen_afiliados()
 
     def get_participation_list(
         self, session: Session | None = None, limit: int = 20

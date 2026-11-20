@@ -34,20 +34,19 @@ class AnalyticsRepository:
         """Consulta métricas globales de participación y satisfacción en PostgreSQL.
 
         Returns:
-            Diccionario de indicadores o None si la base no contiene registros.
+            Diccionario de indicadores calculados desde DB o None si está vacía.
 
         """
         if self.session is None:
             return None
         try:
-            total_resp = int(
-                self.session.query(
-                    func.sum(GoldAggSatisfaccionEncuestas.total_respuestas)
-                ).scalar()
-                or 0
-            )
-            if total_resp == 0:
+            q_part = self.session.query(GoldAggParticipacionEmpresa)
+            total_emp = int(q_part.count())
+            if total_emp == 0:
                 return None
+            emp_con_part = int(
+                q_part.filter(GoldAggParticipacionEmpresa.total_eventos > 0).count()
+            )
             total_asist = int(
                 self.session.query(
                     func.sum(GoldAggParticipacionEmpresa.total_asistencias)
@@ -60,6 +59,32 @@ class AnalyticsRepository:
                 ).scalar()
                 or 0
             )
+            presencial = int(
+                self.session.query(
+                    func.sum(
+                        GoldAggParticipacionEmpresa.participacion_modalidad_presencial
+                    )
+                ).scalar()
+                or 0
+            )
+            virtual = int(
+                self.session.query(
+                    func.sum(GoldAggParticipacionEmpresa.participacion_modalidad_virtual)
+                ).scalar()
+                or 0
+            )
+            hibrido = int(
+                self.session.query(
+                    func.sum(GoldAggParticipacionEmpresa.participacion_modalidad_hibrido)
+                ).scalar()
+                or 0
+            )
+            total_resp = int(
+                self.session.query(
+                    func.sum(GoldAggSatisfaccionEncuestas.total_respuestas)
+                ).scalar()
+                or 0
+            )
             prom_sat = float(
                 self.session.query(
                     func.avg(
@@ -68,9 +93,18 @@ class AnalyticsRepository:
                 ).scalar()
                 or 0.0
             )
+            tasa_part = round(emp_con_part / total_emp, 4) if total_emp else 0.0
             return {
+                "total_empresas": total_emp,
+                "empresas_con_participacion": emp_con_part,
+                "tasa_participacion_empresas": tasa_part,
                 "total_asistencias": total_asist,
                 "personas_participantes_acumuladas": total_personas,
+                "participacion_por_modalidad": {
+                    "presencial": presencial,
+                    "virtual": virtual,
+                    "hibrido": hibrido,
+                },
                 "total_respuestas_encuestas": total_resp,
                 "promedio_satisfaccion_general_1_5": round(prom_sat, 2),
                 "estado_calculo_nps": ("NO_CALCULABLE_SIN_PREGUNTA_RECOMENDACION_0_10"),
@@ -81,10 +115,10 @@ class AnalyticsRepository:
             return None
 
     def obtener_metricas_analitica(self) -> dict[str, Any]:
-        """Obtiene métricas cuantitativas desde las tablas Gold de participación.
+        """Obtiene métricas cuantitativas calculadas desde las tablas Gold.
 
         Returns:
-            Diccionario con métricas de asistencia y satisfacción 1-5.
+            Diccionario con métricas reales de asistencia y satisfacción 1-5.
 
         """
         desde_db = self._leer_metricas_desde_db()
@@ -97,16 +131,29 @@ class AnalyticsRepository:
         if ruta_part.exists() and ruta_sat.exists():
             df_part = pd.read_parquet(ruta_part)
             df_sat = pd.read_parquet(ruta_sat)
+            total_emp = int(len(df_part))
+            emp_con_part = int((df_part["total_eventos"] > 0).sum())
+            tasa_part = round(emp_con_part / total_emp, 4) if total_emp else 0.0
             prom = (
                 float(df_sat["promedio_satisfaccion_general_1_5"].mean())
                 if not df_sat.empty
                 else 0.0
             )
             return {
+                "total_empresas": total_emp,
+                "empresas_con_participacion": emp_con_part,
+                "tasa_participacion_empresas": tasa_part,
                 "total_asistencias": int(df_part["total_asistencias"].sum()),
                 "personas_participantes_acumuladas": int(
                     df_part["personas_distintas_participantes"].sum()
                 ),
+                "participacion_por_modalidad": {
+                    "presencial": int(
+                        df_part["participacion_modalidad_presencial"].sum()
+                    ),
+                    "virtual": int(df_part["participacion_modalidad_virtual"].sum()),
+                    "hibrido": int(df_part["participacion_modalidad_hibrido"].sum()),
+                },
                 "total_respuestas_encuestas": int(df_sat["total_respuestas"].sum()),
                 "promedio_satisfaccion_general_1_5": round(prom, 2),
                 "estado_calculo_nps": ("NO_CALCULABLE_SIN_PREGUNTA_RECOMENDACION_0_10"),
@@ -114,12 +161,20 @@ class AnalyticsRepository:
             }
 
         return {
+            "total_empresas": 0,
+            "empresas_con_participacion": 0,
+            "tasa_participacion_empresas": 0.0,
             "total_asistencias": 0,
             "personas_participantes_acumuladas": 0,
+            "participacion_por_modalidad": {
+                "presencial": 0,
+                "virtual": 0,
+                "hibrido": 0,
+            },
             "total_respuestas_encuestas": 0,
             "promedio_satisfaccion_general_1_5": 0.0,
             "estado_calculo_nps": "NO_CALCULABLE_SIN_PREGUNTA_RECOMENDACION_0_10",
-            "fuente_datos": "fallback_default",
+            "fuente_datos": "sin_datos",
         }
 
     def listar_satisfaccion_encuestas(self) -> list[dict[str, Any]]:
