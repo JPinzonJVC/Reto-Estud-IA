@@ -42,8 +42,10 @@ El pipeline ETL de **ACTHO 360** procesa las fuentes normalizadas desde `input/n
 | Tabla PostgreSQL | Archivo Parquet/CSV | PK | Filas | Indicadores Principales |
 | :--- | :--- | :--- | :---: | :--- |
 | `gold_agg_participacion_empresa` | `gold/agg_participacion_empresa` | `(id_empresa, periodo_analisis)` | `1,851` | `total_eventos`, `total_asistencias`, `personas_distintas_participantes`, trimestre calendario/operativo, ventana 90d, `ultima_fecha_participacion`, recencia. |
-| `gold_agg_satisfaccion_encuestas` | `gold/agg_satisfaccion_encuestas` | `(modalidad_encuesta, periodo_mes_iso)` | `25` | `total_respuestas`, promedios 1–5 por dimensión, distribución Likert (altas/medias/bajas), conteo de anónimos y preparación NPS 0–10. |
-| `gold_agg_retencion_empresa` | `gold/agg_retencion_empresa` | `id_empresa` | `1,851` | Estado de afiliación, `fecha_expiracion`, `dias_para_expiracion`, separación `es_membresia_vencida` ($<0\text{d}$) vs `es_proximo_vencimiento_90d` ($0..90\text{d}$), `puntaje_heuristico_riesgo` y `semaforo_riesgo_renovacion`. |
+| `gold_agg_participacion_eventos` | `gold/agg_participacion_eventos` | `id_evento` | `34` | `nombre_evento`, `linea_oferta_2027`, `modalidad`, `total_asistencias`, `asistentes_afiliados`, `asistentes_no_afiliados` (leads), `desglose_niveles_cargo`, autorización de datos. |
+| `gold_agg_satisfaccion_encuestas` | `gold/agg_satisfaccion_encuestas` | `(tipo_encuesta, modalidad_encuesta, periodo_mes_iso)` | `25+` | `total_respuestas`, promedios 1–5 por dimensión, NPS adaptado 1–5, preparación NPS oficial 0–10 (`POST_EVENTO` vs `ENCUESTA_90_DIAS`) y `temarios_sugeridos_resumen`. |
+| `gold_agg_retencion_empresa` | `gold/agg_retencion_empresa` | `id_empresa` | `1,851` | Estado de afiliación, `fecha_expiracion`, `dias_para_expiracion`, cortes `30d`/`60d`/`90d`, `puntaje_heuristico_riesgo` y `semaforo_riesgo_renovacion`. |
+| `gold_agg_segmentos_comunicaciones` | `gold/agg_segmentos_comunicaciones` | `id_registro_segmento` | Variable | Los 8 segmentos accionables de la Sección 05 (exportados también en `gold/segmentos_comunicaciones/*.csv`) con `kam_id`, riesgo y `autoriza_tratamiento_datos`. |
 
 ### 2.3 Capa Audit (`audit_*`)
 | Tabla PostgreSQL | Archivo Parquet/CSV | PK | Filas | Propósito |
@@ -84,3 +86,20 @@ El pipeline ETL de **ACTHO 360** procesa las fuentes normalizadas desde `input/n
 - **Módulo de Retención (`app/modules/retention/`)**:
   - `RetentionRepository` y `RetentionService` consultan `gold_agg_retencion_empresa`.
   - Endpoints: `GET /retention/overview`, `GET /retention/companies` y `POST /retention/evaluate`.
+
+---
+
+## 5. Entregable 6: Recomendaciones de Captura de Datos (ACTHO)
+
+Para garantizar que el modelo Medallion y el tablero se mantengan actualizados sin reprocesos manuales ni pérdida de trazabilidad, se recomiendan los siguientes ajustes operativos en la captura de información:
+
+1. **Identificador único de empresa y persona en todos los formularios:**
+   - Exigir **NIT / código de empresa** y **documento o correo corporativo** en los formularios de inscripción a eventos y en las encuestas de satisfacción, evitando registros anónimos o vínculos ambiguos por texto libre.
+2. **Catálogo cerrado de ejecutivas KAM y campos del CRM:**
+   - Usar listas desplegables cerradas para `ejecutiva_kam`, `nivel_membresia` (`Conectar`, `Crecer`, `Liderar`), `sector_economico` y `ciudad`, evitando variantes de escritura (`"Sin asignar"` vs `"Sin asignar (cuenta ACTHO)"`).
+3. **Trazabilidad explícita de `id_evento` en encuestas:**
+   - Incluir el identificador o código del evento (`id_evento`) como parámetro oculto (UTM / query param) en el enlace de cada encuesta post-evento, para permitir el cálculo de **Satisfacción y NPS por evento y línea 2027**.
+4. **Estandarización de la pregunta NPS (escala 0–10) y Encuesta de 90 días:**
+   - Incorporar la pregunta estándar *"¿Qué tan probable es que recomiende ACTHO a un colega? (0 a 10)"* tanto en encuestas post-evento como en la nueva encuesta de 90 días, marcando el campo `tipo_encuesta` (`POST_EVENTO` vs `ENCUESTA_90_DIAS`) para que Gold calcule el **NPS de ACTHO** sin mezclarlo con el **NPS por evento**.
+5. **Control de fechas y autorización de datos:**
+   - Validar formato ISO (`YYYY-MM-DD`) en `fecha_afiliacion` y `fecha_expiracion` en CRM, y mantener obligatorio el campo booleano `autoriza_tratamiento_datos` para habilitar la exportación segura de los 8 segmentos de comunicaciones.

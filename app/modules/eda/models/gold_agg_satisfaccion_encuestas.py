@@ -1,14 +1,17 @@
 """Modelo ORM para satisfacción de encuestas (gold_agg_satisfaccion_encuestas)."""
 
-from sqlalchemy import Column, Float, Integer, String
+from sqlalchemy import Column, Float, Integer, String, Text
 
 from app.database import Base
 
 
 class GoldAggSatisfaccionEncuestas(Base):  # type: ignore[misc,valid-type]
-    """Agregación analítica de satisfacción por modalidad y mes en la capa Gold."""
+    """Agregación analítica de satisfacción por tipo, modalidad y mes en la capa Gold."""
 
     __tablename__ = "gold_agg_satisfaccion_encuestas"
+
+    tipo_encuesta = Column(String(64), primary_key=True)
+    """Tipo de encuesta (POST_EVENTO, ENCUESTA_90_DIAS, etc.) para separar NPS."""
 
     modalidad_encuesta = Column(String(64), primary_key=True)
     """Modalidad del instrumento evaluado (Presencial o Virtual)."""
@@ -90,3 +93,6 @@ class GoldAggSatisfaccionEncuestas(Base):  # type: ignore[misc,valid-type]
 
     asociacion_evento_origen = Column(String(128), nullable=True)
     """Nota de trazabilidad sobre la disponibilidad de id_evento en la fuente."""
+
+    temarios_sugeridos_resumen = Column(Text, nullable=True)
+    """Resumen de temas y comentarios solicitados en las respuestas del periodo."""

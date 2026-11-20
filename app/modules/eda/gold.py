@@ -1,5 +1,6 @@
 """Agregaciones analíticas en capa Gold (Participación, Satisfacción y Retención)."""
 
+import json
 from datetime import datetime
 from typing import Any
 
@@ -191,9 +192,30 @@ def construir_agg_satisfaccion_encuestas(
 
     """
     t0 = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    df_enc = df_enc_silver.copy()
+    if "tipo_encuesta" not in df_enc.columns:
+        df_enc["tipo_encuesta"] = "POST_EVENTO"
+    else:
+        df_enc["tipo_encuesta"] = (
+            df_enc["tipo_encuesta"].fillna("POST_EVENTO").astype(str)
+        )
+    if "temarios_sugeridos" not in df_enc.columns:
+        df_enc["temarios_sugeridos"] = None
+
+    def _resumir_temarios(serie: pd.Series) -> str | None:
+        limpios = [
+            str(v).strip()
+            for v in serie.dropna()
+            if str(v).strip() and str(v).strip().lower() not in ("nan", "none", "n/a")
+        ]
+        if not limpios:
+            return None
+        top_unicos = list(dict.fromkeys(limpios))[:5]
+        return " | ".join(top_unicos)
+
     agg_sat = (
-        df_enc_silver.groupby(
-            ["modalidad_encuesta", "periodo_mes_iso"],
+        df_enc.groupby(
+            ["tipo_encuesta", "modalidad_encuesta", "periodo_mes_iso"],
             dropna=False,
             as_index=False,
         )
@@ -252,8 +274,12 @@ def construir_agg_satisfaccion_encuestas(
                 "pregunta_recomendacion_nps_0_10",
                 lambda s: int((s <= 6).sum()) if s.notna().any() else pd.NA,
             ),
+            temarios_sugeridos_resumen=(
+                "temarios_sugeridos",
+                _resumir_temarios,
+            ),
         )
-        .sort_values(["modalidad_encuesta", "periodo_mes_iso"])
+        .sort_values(["tipo_encuesta", "modalidad_encuesta", "periodo_mes_iso"])
         .reset_index(drop=True)
     )
     for col_m in (
@@ -610,3 +636,334 @@ def construir_agg_retencion_empresa(
         act=0,
     )
     return agg_retencion
+
+
+def _resumir_cargos_evento(df_ev_asist: pd.DataFrame) -> str:
+    """Serializa en JSON el conteo de asistencias por nivel de cargo de un evento."""
+    if df_ev_asist.empty or "nivel_cargo" not in df_ev_asist.columns:
+        return json.dumps({}, ensure_ascii=False)
+    cargos = (
+        df_ev_asist["nivel_cargo"]
+        .fillna("Sin dato")
+        .astype(str)
+        .str.strip()
+        .replace("", "Sin dato")
+    )
+    conteos = {str(k): int(v) for k, v in cargos.value_counts().items()}
+    return json.dumps(conteos, ensure_ascii=False)
+
+
+def construir_agg_participacion_eventos(
+    silver: dict[str, pd.DataFrame],
+    cfg: ConfiguracionETL,
+    bitacora: BitacoraAuditoria,
+) -> pd.DataFrame:
+    """Construye y persiste agg_participacion_eventos en la capa Gold.
+
+    Args:
+        silver: Diccionario de DataFrames de la capa Silver.
+        cfg: Configuración del pipeline ETL Medallion.
+        bitacora: Bitácora de auditoría activa.
+
+    Returns:
+        DataFrame agregado por evento con línea 2027, modalidad, cargos y leads.
+
+    """
+    t0 = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    dim_ev = silver["dim_eventos"].copy()
+    fact_asist = silver["fact_asistencias"].copy()
+
+    filas: list[dict[str, Any]] = []
+    for _, ev in dim_ev.iterrows():
+        ev_id = str(ev["id_evento"])
+        sub = fact_asist[fact_asist["id_evento"] == ev_id]
+        tot = int(len(sub))
+        no_af = (
+            int((~sub["es_afiliado"].astype(bool)).sum())
+            if not sub.empty and "es_afiliado" in sub.columns
+            else 0
+        )
+        af = tot - no_af
+        emp_af = (
+            int(sub[sub["es_afiliado"].astype(bool)]["id_empresa"].dropna().nunique())
+            if not sub.empty
+            else 0
+        )
+        emp_no_af = (
+            int(sub[~sub["es_afiliado"].astype(bool)]["id_empresa"].dropna().nunique())
+            if not sub.empty
+            else 0
+        )
+        aut_datos = (
+            int(sub["autoriza_tratamiento_datos"].fillna(False).astype(bool).sum())
+            if not sub.empty and "autoriza_tratamiento_datos" in sub.columns
+            else 0
+        )
+        filas.append(
+            {
+                "id_evento": ev_id,
+                "nombre_evento": ev.get("nombre_evento"),
+                "fecha_evento": ev.get("fecha_evento"),
+                "periodo_mes_iso": ev.get("periodo_mes_iso"),
+                "linea_oferta_2027": ev.get("linea_oferta_2027"),
+                "modalidad": ev.get("modalidad"),
+                "es_presencial": bool(ev.get("es_presencial", False)),
+                "total_asistencias": tot,
+                "personas_distintas": (
+                    int(sub["id_persona"].dropna().nunique()) if not sub.empty else 0
+                ),
+                "empresas_distintas": (
+                    int(sub["id_empresa"].dropna().nunique()) if not sub.empty else 0
+                ),
+                "asistentes_afiliados": af,
+                "asistentes_no_afiliados": no_af,
+                "empresas_afiliadas_distintas": emp_af,
+                "empresas_no_afiliadas_distintas": emp_no_af,
+                "porcentaje_no_afiliados": (
+                    round((no_af / tot) * 100.0, 2) if tot > 0 else 0.0
+                ),
+                "asistentes_con_autorizacion_datos": aut_datos,
+                "desglose_niveles_cargo": _resumir_cargos_evento(sub),
+            }
+        )
+
+    agg_ev = pd.DataFrame(filas)
+    guardar_tabla_medallion(agg_ev, cfg.gold_dir, "agg_participacion_eventos")
+    bitacora.registrar_carga(
+        "silver -> gold/agg_participacion_eventos",
+        t0,
+        leidos=len(dim_ev),
+        proc=len(agg_ev),
+        ins=len(agg_ev),
+        act=0,
+    )
+    return agg_ev
+
+
+def _armar_filas_segmento(
+    df_base: pd.DataFrame,
+    orden: int,
+    codigo: str,
+    nombre: str,
+    detalle_col: str | None = None,
+    detalle_fijo: str = "",
+) -> list[dict[str, Any]]:
+    """Construye registros normalizados para un segmento de comunicaciones."""
+    registros: list[dict[str, Any]] = []
+    vistas: set[str] = set()
+    for _, row in df_base.iterrows():
+        emp_id = row.get("id_empresa")
+        per_id = row.get("id_persona")
+        emp_str = str(emp_id) if pd.notna(emp_id) and str(emp_id).strip() else "NA"
+        per_str = str(per_id) if pd.notna(per_id) and str(per_id).strip() else "NA"
+        pk = f"{codigo}::{emp_str}::{per_str}"
+        if pk in vistas:
+            continue
+        vistas.add(pk)
+        det = (
+            str(row[detalle_col])
+            if detalle_col and pd.notna(row.get(detalle_col))
+            else detalle_fijo
+        )
+        aut_raw = row.get("autoriza_tratamiento_datos")
+        aut_val = None if pd.isna(aut_raw) else bool(aut_raw)
+        registros.append(
+            {
+                "id_registro_segmento": pk,
+                "orden_segmento": orden,
+                "segmento_codigo": codigo,
+                "segmento_nombre": nombre,
+                "id_empresa": None if emp_str == "NA" else emp_str,
+                "id_persona": None if per_str == "NA" else per_str,
+                "kam_id": (
+                    str(row["kam_id"])
+                    if pd.notna(row.get("kam_id"))
+                    else "KAM-UNASSIGNED"
+                ),
+                "nivel_membresia": (
+                    str(row["nivel_membresia"])
+                    if pd.notna(row.get("nivel_membresia"))
+                    else None
+                ),
+                "estado_vigencia_expiracion": (
+                    str(row["estado_vigencia_expiracion"])
+                    if pd.notna(row.get("estado_vigencia_expiracion"))
+                    else None
+                ),
+                "semaforo_riesgo_renovacion": (
+                    str(row["semaforo_riesgo_renovacion"])
+                    if pd.notna(row.get("semaforo_riesgo_renovacion"))
+                    else None
+                ),
+                "detalle_criterio": det,
+                "autoriza_tratamiento_datos": aut_val,
+            }
+        )
+    return registros
+
+
+def construir_agg_segmentos_comunicaciones(
+    silver: dict[str, pd.DataFrame],
+    agg_retencion: pd.DataFrame,
+    cfg: ConfiguracionETL,
+    bitacora: BitacoraAuditoria,
+) -> pd.DataFrame:
+    """Construye los 8 segmentos oficiales para comunicaciones en la capa Gold.
+
+    Args:
+        silver: Diccionario de DataFrames de la capa Silver.
+        agg_retencion: DataFrame de retención por empresa desde Gold.
+        cfg: Configuración del pipeline ETL Medallion.
+        bitacora: Bitácora de auditoría activa.
+
+    Returns:
+        DataFrame consolidado con los 8 segmentos accionables de comunicaciones.
+
+    """
+    t0 = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    activas = agg_retencion[agg_retencion["es_membresia_activa"].astype(bool)].copy()
+    fact_asist = silver["fact_asistencias"].copy()
+    fact_enc = silver["fact_encuestas_satisfaccion"].copy()
+
+    seg1 = activas[activas["asistencias_trimestre_operativo"] == 0]
+    seg2 = activas[activas["es_proximo_vencimiento_90d"].astype(bool)].sort_values(
+        "puntaje_heuristico_riesgo", ascending=False
+    )
+    seg3_emp = agg_retencion[agg_retencion["alerta_baja_satisfaccion"].astype(bool)]
+    seg4_emp = agg_retencion[
+        agg_retencion["satisfaccion_reciente_1_5"].notna()
+        & (agg_retencion["satisfaccion_reciente_1_5"] >= 4.75)
+    ]
+    seg5 = fact_asist[~fact_asist["es_afiliado"].astype(bool)].merge(
+        agg_retencion[
+            [
+                "id_empresa",
+                "nivel_membresia",
+                "estado_vigencia_expiracion",
+                "semaforo_riesgo_renovacion",
+            ]
+        ],
+        on="id_empresa",
+        how="left",
+    )
+    seg6 = activas[
+        (activas["total_eventos"] >= 1)
+        & (activas["personas_distintas_participantes"] == 1)
+    ]
+    seg7 = fact_enc[
+        fact_enc["temarios_sugeridos"].notna()
+        & (fact_enc["temarios_sugeridos"].astype(str).str.strip() != "")
+    ].merge(
+        agg_retencion[
+            [
+                "id_empresa",
+                "kam_id",
+                "nivel_membresia",
+                "estado_vigencia_expiracion",
+                "semaforo_riesgo_renovacion",
+            ]
+        ],
+        on="id_empresa",
+        how="left",
+    )
+    fecha_corte_dt = pd.Timestamp(cfg.fecha_corte)
+    af_dt = pd.to_datetime(activas["fecha_afiliacion"], errors="coerce")
+    dias_desde_af = (fecha_corte_dt - af_dt).dt.days
+    seg8 = activas[dias_desde_af.between(0, 90, inclusive="both")]
+
+    grupos: list[tuple[int, str, str, str, pd.DataFrame, str | None, str]] = [
+        (
+            1,
+            "AFILIADOS_SIN_PARTICIPACION",
+            "1. Afiliados que no participan",
+            "1_afiliados_que_no_participan.csv",
+            seg1,
+            "estado_recencia_participacion",
+            "Sin asistencias en el trimestre operativo",
+        ),
+        (
+            2,
+            "VENCIMIENTOS_PROXIMOS_90D",
+            "2. Vencimientos próximos (90 días)",
+            "2_vencimientos_proximos_90d.csv",
+            seg2,
+            "estado_vigencia_expiracion",
+            "Membresía próxima a vencer en <= 90 días",
+        ),
+        (
+            3,
+            "DETRACTORES_RECIENTES",
+            "3. Detractores recientes",
+            "3_detractores_recientes.csv",
+            seg3_emp,
+            "satisfaccion_reciente_1_5",
+            "Calificación de satisfacción reciente < 3.75",
+        ),
+        (
+            4,
+            "PROMOTORES_TESTIMONIOS",
+            "4. Promotores para testimonios",
+            "4_promotores_testimonios.csv",
+            seg4_emp,
+            "satisfaccion_reciente_1_5",
+            "Satisfacción reciente >= 4.75 (Promotor)",
+        ),
+        (
+            5,
+            "ASISTENTES_NO_AFILIADOS_LEADS",
+            "5. Asistentes no afiliados (Leads)",
+            "5_asistentes_no_afiliados_leads.csv",
+            seg5,
+            "id_evento",
+            "Participante asistente sin afiliación activa",
+        ),
+        (
+            6,
+            "AFILIADOS_UN_SOLO_CONTACTO",
+            "6. Afiliados de un solo contacto",
+            "6_afiliados_un_solo_contacto.csv",
+            seg6,
+            "ultima_fecha_participacion",
+            "Empresa activa con monocontacto en eventos",
+        ),
+        (
+            7,
+            "INTERES_POR_TEMA_Y_LINEA",
+            "7. Interés por tema y por línea",
+            "7_interes_por_tema_y_linea.csv",
+            seg7,
+            "temarios_sugeridos",
+            "Temario sugerido en encuesta",
+        ),
+        (
+            8,
+            "NUEVOS_AFILIADOS_ONBOARDING",
+            "8. Nuevos afiliados (< 90 días)",
+            "8_nuevos_afiliados_onboarding.csv",
+            seg8,
+            "fecha_afiliacion",
+            "Afiliado con menos de 90 días de antigüedad",
+        ),
+    ]
+
+    todas_filas: list[dict[str, Any]] = []
+    dir_seg = cfg.gold_dir / "segmentos_comunicaciones"
+    dir_seg.mkdir(parents=True, exist_ok=True)
+    for orden, cod, nom, arch, df_sub, det_col, det_fijo in grupos:
+        filas_seg = _armar_filas_segmento(
+            df_sub, orden, cod, nom, detalle_col=det_col, detalle_fijo=det_fijo
+        )
+        todas_filas.extend(filas_seg)
+        pd.DataFrame(filas_seg).to_csv(dir_seg / arch, index=False, encoding="utf-8-sig")
+
+    agg_seg = pd.DataFrame(todas_filas)
+    guardar_tabla_medallion(agg_seg, cfg.gold_dir, "agg_segmentos_comunicaciones")
+    bitacora.registrar_carga(
+        "silver -> gold/agg_segmentos_comunicaciones",
+        t0,
+        leidos=len(agg_retencion) + len(fact_asist) + len(fact_enc),
+        proc=len(agg_seg),
+        ins=len(agg_seg),
+        act=0,
+    )
+    return agg_seg

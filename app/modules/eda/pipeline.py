@@ -23,8 +23,10 @@ from app.modules.eda.bronze import (
 from app.modules.eda.config import ConfiguracionETL, cargar_configuracion
 from app.modules.eda.gold import (
     construir_agg_participacion_empresa,
+    construir_agg_participacion_eventos,
     construir_agg_retencion_empresa,
     construir_agg_satisfaccion_encuestas,
+    construir_agg_segmentos_comunicaciones,
 )
 from app.modules.eda.postgres_loader import cargar_tablas_en_postgres
 from app.modules.eda.scd2 import construir_dim_empresas_scd2
@@ -97,14 +99,18 @@ def _construir_capa_gold(
 
     """
     agg_part = construir_agg_participacion_empresa(silver, cfg, bitacora)
+    agg_ev = construir_agg_participacion_eventos(silver, cfg, bitacora)
     agg_sat = construir_agg_satisfaccion_encuestas(
         silver["fact_encuestas_satisfaccion"], cfg, bitacora
     )
     agg_ret = construir_agg_retencion_empresa(bronze, silver, agg_part, cfg, bitacora)
+    agg_seg = construir_agg_segmentos_comunicaciones(silver, agg_ret, cfg, bitacora)
     return {
         "agg_participacion_empresa": agg_part,
+        "agg_participacion_eventos": agg_ev,
         "agg_satisfaccion_encuestas": agg_sat,
         "agg_retencion_empresa": agg_ret,
+        "agg_segmentos_comunicaciones": agg_seg,
     }
 
 

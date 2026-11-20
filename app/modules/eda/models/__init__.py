@@ -12,9 +12,15 @@ from app.modules.eda.models.audit_registro_rechazado import AuditRegistroRechaza
 from app.modules.eda.models.gold_agg_participacion_empresa import (
     GoldAggParticipacionEmpresa,
 )
+from app.modules.eda.models.gold_agg_participacion_eventos import (
+    GoldAggParticipacionEventos,
+)
 from app.modules.eda.models.gold_agg_retencion_empresa import GoldAggRetencionEmpresa
 from app.modules.eda.models.gold_agg_satisfaccion_encuestas import (
     GoldAggSatisfaccionEncuestas,
+)
+from app.modules.eda.models.gold_agg_segmentos_comunicaciones import (
+    GoldAggSegmentosComunicaciones,
 )
 from app.modules.eda.models.silver_dim_empresa import SilverDimEmpresa
 from app.modules.eda.models.silver_dim_empresa_scd2 import SilverDimEmpresaScd2
@@ -36,8 +42,10 @@ __all__ = [
     "AuditRegistroDuplicado",
     "AuditRegistroRechazado",
     "GoldAggParticipacionEmpresa",
+    "GoldAggParticipacionEventos",
     "GoldAggRetencionEmpresa",
     "GoldAggSatisfaccionEncuestas",
+    "GoldAggSegmentosComunicaciones",
     "SilverDimEmpresa",
     "SilverDimEmpresaScd2",
     "SilverDimEvento",

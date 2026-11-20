@@ -222,7 +222,7 @@ def test_persistencia_postgresql_upsert_idempotente_y_backend(tmp_path: Path) ->
 
     mig_0001.upgrade(bind=engine)
     tablas_creadas = listar_tablas_medallion_db(engine)
-    assert len(tablas_creadas) == 18
+    assert len(tablas_creadas) == 20
 
     cfg = cargar_configuracion(
         origen_normalizados_override=norm_dir,
@@ -232,7 +232,13 @@ def test_persistencia_postgresql_upsert_idempotente_y_backend(tmp_path: Path) ->
     res_1 = ejecutar_pipeline_completo(cfg=cfg, persistir_en_db=True, db_engine=engine)
     assert res_1["conteos_db"]["silver_dim_empresas"] == 4
     assert res_1["conteos_db"]["gold_agg_retencion_empresa"] == 4
+    assert res_1["conteos_db"]["gold_agg_participacion_eventos"] >= 1
+    assert "gold_agg_segmentos_comunicaciones" in res_1["conteos_db"]
     assert res_1["conteos_db"]["audit_registros_duplicados"] == 122
+
+    seg_dir = out_dir / "gold" / "segmentos_comunicaciones"
+    assert seg_dir.exists()
+    assert len(list(seg_dir.glob("*.csv"))) == 8
 
     res_2 = ejecutar_pipeline_completo(cfg=cfg, persistir_en_db=True, db_engine=engine)
     assert res_2["conteos_db"]["silver_dim_empresas"] == 4
