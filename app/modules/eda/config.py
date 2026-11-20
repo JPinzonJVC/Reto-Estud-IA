@@ -1,10 +1,11 @@
-"""Módulo de configuración portable para el pipeline ETL Medallion ACTHO 360."""
+"""Configuración portable con Pydantic para el pipeline ETL Medallion ACTHO 360."""
 
 import json
 import os
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict
 
 MODULE_DIR: Path = Path(__file__).resolve().parent
 PROJECT_ROOT_DEFAULT: Path = MODULE_DIR.parents[2]
@@ -32,26 +33,29 @@ REGLAS_SEMAFORO_DEFAULT: dict[str, Any] = {
 }
 
 
-@dataclass(frozen=True)
-class ConfiguracionETL:
-    """Configuración inmutable de directorios, parámetros temporales y reglas.
-
-    Attributes:
-        origen_normalizados_dir: Directorio con los archivos CSV normalizados.
-        origen_duplicados_dir: Directorio con los archivos de duplicados.
-        salida_root_dir: Directorio raíz de salida para capas Medallion (input).
-        parametros_temporales: Parámetros de fecha de corte, trimestres y ventanas.
-        homologacion_kam: Parámetros para homologación de KAM sin asignar.
-        reglas_semaforo: Umbrales y pesos del semáforo heurístico de riesgo.
-
-    """
+class ConfiguracionETL(BaseModel):
+    """Configuración inmutable de directorios, parámetros temporales y reglas."""
 
     origen_normalizados_dir: Path
+    """Directorio con los archivos CSV normalizados de entrada."""
+
     origen_duplicados_dir: Path
+    """Directorio con los archivos de registros duplicados identificados."""
+
     salida_root_dir: Path
-    parametros_temporales: dict[str, Any] = field(default_factory=dict)
-    homologacion_kam: dict[str, Any] = field(default_factory=dict)
-    reglas_semaforo: dict[str, Any] = field(default_factory=dict)
+    """Directorio raíz de salida para las capas Medallion (input)."""
+
+    parametros_temporales: dict[str, Any] = {}
+    """Parámetros de fecha de corte, trimestres y ventanas móviles."""
+
+    homologacion_kam: dict[str, Any] = {}
+    """Parámetros para homologación del identificador de KAM sin asignar."""
+
+    reglas_semaforo: dict[str, Any] = {}
+    """Umbrales y pesos del semáforo heurístico de riesgo de renovación."""
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+    """Configuración de inmutabilidad y soporte de tipos Path para el modelo."""
 
     @property
     def fecha_corte(self) -> str:
@@ -194,7 +198,7 @@ def cargar_configuracion(
         salida_root_override: Sobrescritura del directorio raíz de salida.
 
     Returns:
-        Instancia inmutable de ConfiguracionETL con rutas resueltas.
+        Instancia inmutable de ConfiguracionETL (Pydantic BaseModel) con rutas resueltas.
 
     """
     env_cfg = os.environ.get("ACTHO360_CONFIG_PATH")
