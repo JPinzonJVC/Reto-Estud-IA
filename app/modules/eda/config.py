@@ -45,6 +45,9 @@ class ConfiguracionETL(BaseModel):
     salida_root_dir: Path
     """Directorio raíz de salida para las capas Medallion (input)."""
 
+    origen_raw_csv_dir: Path | None = None
+    """Directorio con los 47 archivos CSV crudos originales para ingesta en Bronze."""
+
     parametros_temporales: dict[str, Any] = {}
     """Parámetros de fecha de corte, trimestres y ventanas móviles."""
 
@@ -138,6 +141,11 @@ class ConfiguracionETL(BaseModel):
         return self.salida_root_dir / "silver"
 
     @property
+    def bronze_raw_dir(self) -> Path:
+        """Retorna el subdirectorio de Bronze para fuentes CSV crudas."""
+        return self.bronze_dir / "raw_csv"
+
+    @property
     def gold_dir(self) -> Path:
         """Retorna el directorio de la capa Gold."""
         return self.salida_root_dir / "gold"
@@ -188,6 +196,7 @@ def cargar_configuracion(
     origen_normalizados_override: Path | str | None = None,
     origen_duplicados_override: Path | str | None = None,
     salida_root_override: Path | str | None = None,
+    origen_raw_csv_override: Path | str | None = None,
 ) -> ConfiguracionETL:
     """Carga la configuración desde JSON o variables de entorno usando pathlib.Path.
 
@@ -226,11 +235,19 @@ def cargar_configuracion(
         salida_root_override or os.environ.get("ACTHO360_SALIDA_DIR"),
         rutas_cfg.get("salida_root_dir", "input"),
     )
+    raw_csv_dir: Path | None = None
+    if origen_raw_csv_override is not None or origen_normalizados_override is None:
+        raw_csv_dir = _resolver_ruta(
+            base_dir,
+            origen_raw_csv_override or os.environ.get("ACTHO360_RAW_CSV_DIR"),
+            rutas_cfg.get("origen_raw_csv_dir", "input/CSV"),
+        )
 
     return ConfiguracionETL(
         origen_normalizados_dir=norm_dir,
         origen_duplicados_dir=dup_dir,
         salida_root_dir=out_dir,
+        origen_raw_csv_dir=raw_csv_dir,
         parametros_temporales=raw.get("parametros_temporales", {}),
         homologacion_kam=raw.get("homologacion_kam", {}),
         reglas_semaforo=raw.get("reglas_semaforo_riesgo", REGLAS_SEMAFORO_DEFAULT),

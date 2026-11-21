@@ -2,6 +2,7 @@
   "version_configuracion": "2.0.0",
   "descripcion": "Configuracion centralizada y portable del pipeline ETL Medallion ACTHO 360",
   "rutas_relativas": {
+    "origen_raw_csv_dir": "input/CSV",
     "origen_normalizados_dir": "input/normalizados",
     "origen_duplicados_dir": "input/normalizados/duplicados",
     "salida_root_dir": "input"

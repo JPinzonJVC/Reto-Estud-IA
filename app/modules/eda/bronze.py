@@ -181,7 +181,60 @@ def ingerir_y_validar_bronze(
 
     df_hashes = pd.DataFrame(hashes_rows)
     guardar_tabla_medallion(df_hashes, cfg.audit_dir, "audit_hashes_fuentes_bronze")
+    if cfg.origen_raw_csv_dir is not None and cfg.origen_raw_csv_dir.exists():
+        ingerir_fuentes_crudas_bronze(cfg, run_id=id_ejec, ts_ingesta=fecha_ingesta)
     return bronze_dfs, df_hashes
+
+
+def ingerir_fuentes_crudas_bronze(
+    cfg: ConfiguracionETL,
+    run_id: str | None = None,
+    ts_ingesta: str | None = None,
+) -> pd.DataFrame:
+    """Ingesta en crudo los CSV originales de input/CSV hacia Bronze con SHA-256.
+
+    Args:
+        cfg: Configuración del pipeline ETL Medallion.
+        run_id: Identificador de la ejecución ETL actual.
+        ts_ingesta: Fecha y hora ISO de la ingesta en Bronze.
+
+    Returns:
+        DataFrame con el registro de hashes SHA-256 de los archivos crudos.
+
+    """
+    if cfg.origen_raw_csv_dir is None or not cfg.origen_raw_csv_dir.exists():
+        return pd.DataFrame()
+
+    id_ejec = run_id or f"ETL-ACTHO360-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    fecha_ingesta = ts_ingesta or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    archivos_raw = sorted(cfg.origen_raw_csv_dir.rglob("*.csv"))
+    if not archivos_raw:
+        return pd.DataFrame()
+
+    registros: list[dict[str, Any]] = []
+    for ruta_src in archivos_raw:
+        rel_path = ruta_src.relative_to(cfg.origen_raw_csv_dir)
+        ruta_dst = cfg.bronze_raw_dir / rel_path
+        ruta_dst.parent.mkdir(parents=True, exist_ok=True)
+        accion = _sincronizar_archivo_bronze(ruta_src, ruta_dst, str(rel_path))
+        registros.append(
+            {
+                "id_ejecucion": id_ejec,
+                "fecha_hora_ingesta": fecha_ingesta,
+                "archivo_relativo": rel_path.as_posix(),
+                "bytes_origen": int(ruta_src.stat().st_size),
+                "sha256_origen": calcular_sha256_archivo(ruta_src),
+                "sha256_bronze": calcular_sha256_archivo(ruta_dst),
+                "integridad_verificada": True,
+                "accion_bronze": accion,
+            }
+        )
+
+    df_raw_hashes = pd.DataFrame(registros)
+    guardar_tabla_medallion(
+        df_raw_hashes, cfg.audit_dir, "audit_hashes_fuentes_bronze_raw"
+    )
+    return df_raw_hashes
 
 
 def homologar_kam_id(valor: Any, cfg: ConfiguracionETL) -> str:

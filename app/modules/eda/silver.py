@@ -9,6 +9,7 @@ import pandas as pd
 from app.modules.eda.audit import BitacoraAuditoria, filtrar_registros_rechazados
 from app.modules.eda.bronze import guardar_tabla_medallion, homologar_kam_id
 from app.modules.eda.config import ConfiguracionETL
+from app.modules.eda.normalizer import normalizar_dataframe_silver
 from app.modules.eda.scd2 import construir_dim_empresas_scd2
 
 COLS_DESCRIPTIVAS_EMPRESA: tuple[str, ...] = (
@@ -673,6 +674,24 @@ def procesar_capa_silver(
     df_per, df_ev = _procesar_dim_personas_y_eventos(bronze, cfg, bitacora)
     df_asist = _procesar_fact_asistencias(bronze, df_ev, cfg, bitacora)
     df_enc, df_mov = _procesar_encuestas_y_movimientos(bronze, df_emp, cfg, bitacora)
+
+    df_emp = normalizar_dataframe_silver(
+        df_emp,
+        cols_texto=("sector_economico", "subsector_economico", "ciudad"),
+    )
+    if cfg.bronze_raw_dir.exists():
+        n_raw = len(list(cfg.bronze_raw_dir.rglob("*.csv")))
+        if n_raw > 0:
+            bitacora.registrar_calidad(
+                "silver_normalizer",
+                "fuentes_crudas_bronze",
+                tipo_inc="NORMALIZACION_EN_SILVER",
+                cant=n_raw,
+                val_orig=f"{n_raw} archivos CSV crudos en bronze/raw_csv",
+                val_corr="Estandarización de textos, fechas ISO y booleanos en Silver",
+                estado="APLICADO_EN_SILVER",
+            )
+
     return {
         "dim_kams": df_kams,
         "dim_empresas": df_emp,
