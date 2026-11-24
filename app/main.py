@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.modules.affiliates.router import affiliates_router
 from app.modules.analytics.router import analytics_router
+from app.modules.dashboard.router import dashboard_router
 from app.modules.retention.router import retention_router
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -41,6 +42,7 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app.include_router(retention_router)
 app.include_router(analytics_router)
 app.include_router(affiliates_router)
+app.include_router(dashboard_router)
 
 
 @app.get("/health", status_code=200)

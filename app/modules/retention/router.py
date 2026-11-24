@@ -1,10 +1,14 @@
 """Enrutador de API y vistas para el módulo de retención."""
 
+from datetime import date
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy.orm import Session
 
+from app.database import get_db
+from app.modules.dashboard.repository import DashboardSilverRepository
 from app.modules.retention.service import RetentionService
 
 retention_router = APIRouter(
@@ -70,3 +74,23 @@ def evaluate_customer(payload: CustomerEvaluationRequest) -> dict[str, Any]:
         customer_id=payload.customer_id,
         features=payload.features,
     )
+
+
+@retention_router.get("/silver/segments")
+def get_silver_segments(
+    fecha_referencia: date = Query(default_factory=date.today),
+    limit: int = Query(default=100, ge=1, le=1000),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Retorna segmentos de acción temprana disponibles desde Silver.
+
+    Args:
+        fecha_referencia: Fecha base para determinar vencimientos próximos.
+        limit: Máximo de registros por segmento.
+        db: Sesión PostgreSQL inyectada mediante ``Depends(get_db)``.
+
+    Returns:
+        Segmentos de vencimientos, inactividad y asistentes no afiliados.
+
+    """
+    return DashboardSilverRepository(db).obtener_segmentos(fecha_referencia, limit)
