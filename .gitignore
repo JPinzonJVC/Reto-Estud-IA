@@ -115,3 +115,7 @@ app/modules/machine_learning/models/*
 *.onnx
 *.pt
 *.pth
+
+# Credenciales y llaves privadas locales
+secrets/
+*.sa.json

@@ -4,6 +4,7 @@ from app.modules.eda.models.audit_calidad_datos import AuditCalidadDatos
 from app.modules.eda.models.audit_carga import AuditCarga
 from app.modules.eda.models.audit_ejecucion_etl import AuditEjecucionEtl
 from app.modules.eda.models.audit_hash_fuente_bronze import AuditHashFuenteBronze
+from app.modules.eda.models.audit_ingestion_watermark import AuditIngestionWatermark
 from app.modules.eda.models.audit_reconciliacion_origen_destino import (
     AuditReconciliacionOrigenDestino,
 )
@@ -38,6 +39,7 @@ __all__ = [
     "AuditCarga",
     "AuditEjecucionEtl",
     "AuditHashFuenteBronze",
+    "AuditIngestionWatermark",
     "AuditReconciliacionOrigenDestino",
     "AuditRegistroDuplicado",
     "AuditRegistroRechazado",
