@@ -1,7 +1,6 @@
-version: '3.8'
-
 services:
   app:
+    image: reto_estudia_app:latest
     build:
       context: .
       dockerfile: Dockerfile
@@ -24,6 +23,7 @@ services:
       - ./app:/app/app
       - ./input:/app/input
       - ./logs:/app/logs
+      - ./secrets:/app/secrets:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -45,11 +45,83 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init-prefect-db.sql:/docker-entrypoint-initdb.d/init-prefect-db.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-estudia_db}"]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  prefect-server:
+    image: prefecthq/prefect:3-latest
+    container_name: reto_estudia_prefect_server
+    restart: unless-stopped
+    command: prefect server start --host 0.0.0.0 --port 4200
+    ports:
+      - "4200:4200"
+    environment:
+      - PREFECT_API_DATABASE_CONNECTION_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres123}@postgres:5432/prefect_db
+      - PREFECT_SERVER_API_HOST=0.0.0.0
+      - PREFECT_SERVER_API_PORT=4200
+      - PREFECT_SERVER_UI_ENABLED=false
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4200/api/health').read()"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  prefect-worker:
+    image: reto_estudia_app:latest
+    container_name: reto_estudia_prefect_worker
+    restart: unless-stopped
+    command: python -m app.modules.eda.orchestration.flows
+    healthcheck:
+      # El worker sirve deployments de Prefect; no expone el HTTP de FastAPI
+      # heredado de la imagen base en el puerto 8000.
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    environment:
+      - PREFECT_API_URL=http://prefect-server:4200/api
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres123}@postgres:5432/${POSTGRES_DB:-estudia_db}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres123}
+      - POSTGRES_DB=${POSTGRES_DB:-estudia_db}
+      - INPUT_DIR=/app/input
+      - EDA_SCHEDULE_CRON=${EDA_SCHEDULE_CRON:-0 6 * * 1}
+      - EDA_SCHEDULE_TIMEZONE=${EDA_SCHEDULE_TIMEZONE:-America/Bogota}
+      - EDA_DEPLOYMENT_NAME=${EDA_DEPLOYMENT_NAME:-eda-medallion-weekly}
+      - EDA_FORCE_REPROCESS=${EDA_FORCE_REPROCESS:-false}
+      - GDRIVE_ENABLED=${GDRIVE_ENABLED:-false}
+      - GDRIVE_FOLDER_ID=${GDRIVE_FOLDER_ID:-}
+      - GDRIVE_CREDENTIALS_FILE=${GDRIVE_CREDENTIALS_FILE:-/app/secrets/gdrive-sa.json}
+      - GDRIVE_DOWNLOAD_DIR=${GDRIVE_DOWNLOAD_DIR:-/app/input/raw_drive}
+      - GDRIVE_EXPORT_XLSX_TO_CSV=${GDRIVE_EXPORT_XLSX_TO_CSV:-true}
+      - DRIVE_SCOPES=${DRIVE_SCOPES:-https://www.googleapis.com/auth/drive.readonly}
+      - ZOHO_ENABLED=${ZOHO_ENABLED:-false}
+      - ZOHO_CLIENT_ID=${ZOHO_CLIENT_ID:-}
+      - ZOHO_CLIENT_SECRET=${ZOHO_CLIENT_SECRET:-}
+      - ZOHO_REFRESH_TOKEN=${ZOHO_REFRESH_TOKEN:-}
+      - ZOHO_ACCOUNTS_URL=${ZOHO_ACCOUNTS_URL:-https://accounts.zoho.com}
+      - ZOHO_API_BASE_URL=${ZOHO_API_BASE_URL:-https://www.zohoapis.com}
+      - ZOHO_MODULES=${ZOHO_MODULES:-Accounts,Contacts,Deals}
+      - ZOHO_OUTPUT_DIR=${ZOHO_OUTPUT_DIR:-/app/input/raw_zoho}
+    volumes:
+      - ./app:/app/app
+      - ./input:/app/input
+      - ./logs:/app/logs
+      - ./secrets:/app/secrets:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      prefect-server:
+        condition: service_healthy
 
 volumes:
   postgres_data:
