@@ -1,9 +1,12 @@
 """Enrutador de API y vistas para el módulo de retención."""
 
+import csv
+import io
 from datetime import date
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
@@ -94,3 +97,98 @@ def get_silver_segments(
 
     """
     return DashboardSilverRepository(db).obtener_segmentos(fecha_referencia, limit)
+
+
+@retention_router.get("/silver/engagement-risk")
+def get_silver_engagement_risk(
+    kam_id: str | None = None,
+    nivel_membresia: str | None = None,
+    sector: str | None = None,
+    limit: int = Query(default=500, ge=1, le=2000),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Retorna conteos y listas Silver de sin participación y monocontacto.
+
+    Args:
+        kam_id: Identificador opcional de la ejecutiva KAM.
+        nivel_membresia: Nivel de membresía opcional.
+        sector: Sector económico opcional.
+        limit: Máximo de registros por lista.
+        db: Sesión PostgreSQL inyectada mediante ``Depends(get_db)``.
+
+    Returns:
+        Resumen y listas de afiliados activos sin participación y monocontacto.
+
+    """
+    return DashboardSilverRepository(db).obtener_riesgo_participacion_silver(
+        kam_id=kam_id,
+        nivel_membresia=nivel_membresia,
+        sector=sector,
+        limit=limit,
+    )
+
+
+@retention_router.get("/silver/export/{segmento}")
+def export_silver_segment_csv(
+    segmento: str,
+    kam_id: str | None = None,
+    nivel_membresia: str | None = None,
+    sector: str | None = None,
+    fecha_referencia: date = Query(default_factory=date.today),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """Exporta en CSV directo desde Silver una lista accionable de retención.
+
+    Args:
+        segmento: Clave del segmento ('sin_participacion', 'monocontacto', 'vencimientos_90d').
+        kam_id: Identificador opcional de la ejecutiva KAM.
+        nivel_membresia: Nivel de membresía opcional.
+        sector: Sector económico opcional.
+        fecha_referencia: Fecha base para vencimientos próximos a 90 días.
+        db: Sesión PostgreSQL inyectada mediante ``Depends(get_db)``.
+
+    Returns:
+        Archivo CSV descargable en codificación UTF-8 con BOM para Excel.
+
+    Raises:
+        HTTPException: Si el segmento solicitado no es válido.
+
+    """
+    repo = DashboardSilverRepository(db)
+    if segmento in ("sin_participacion", "monocontacto"):
+        data = repo.obtener_riesgo_participacion_silver(
+            kam_id=kam_id,
+            nivel_membresia=nivel_membresia,
+            sector=sector,
+            limit=2000,
+        )
+        rows = (
+            data["lista_sin_participacion"]
+            if segmento == "sin_participacion"
+            else data["lista_monocontacto"]
+        )
+    elif segmento == "vencimientos_90d":
+        seg = repo.obtener_segmentos(fecha_referencia, limit=2000)
+        rows = seg["vencimientos_proximos"]
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Segmento inválido. Usa sin_participacion, monocontacto o vencimientos_90d.",
+        )
+
+    buffer = io.StringIO()
+    if rows:
+        writer = csv.DictWriter(buffer, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+    else:
+        buffer.write("sin_registros\n")
+
+    content = ("\ufeff" + buffer.getvalue()).encode("utf-8")
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="actho_silver_{segmento}.csv"'
+        },
+    )
