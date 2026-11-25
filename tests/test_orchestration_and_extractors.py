@@ -407,3 +407,66 @@ def test_eda_medallion_flow_skips_and_runs_conditionally() -> None:
         assert forced["status"] == "COMPLETED"
         assert forced["pipeline_run_id"] == "run-test-001"
         mock_etl.assert_called_once()
+
+
+def test_eda_medallion_flow_cleans_staging_files_after_success(tmp_path: Path) -> None:
+    """Verifica que los archivos temporales en raw_drive/raw_zoho se eliminen tras éxito.
+
+    Args:
+        tmp_path: Directorio temporal provisto por pytest.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: Si los archivos temporales no se eliminan correctamente.
+
+    """
+    from app.modules.eda.extractors.base import ExtractionResult
+
+    engine = create_engine("sqlite:///:memory:")
+    drive_file = tmp_path / "raw_drive" / "dim_kams.xlsx"
+    zoho_file = tmp_path / "raw_zoho" / "zoho_accounts.csv"
+    drive_file.parent.mkdir(parents=True)
+    zoho_file.parent.mkdir(parents=True)
+    drive_file.write_text("dummy", encoding="utf-8")
+    zoho_file.write_text("id\n1\n", encoding="utf-8")
+
+    mock_drive = MagicMock(spec=GoogleDriveExtractor)
+    mock_drive.config = GoogleDriveEnvs(enabled=True)
+    mock_drive.extract.return_value = ExtractionResult(
+        source_name="google_drive",
+        enabled=True,
+        has_changes=True,
+        records_extracted=1,
+        files_written=[drive_file],
+        new_cursor="cur-1",
+    )
+
+    mock_zoho = MagicMock(spec=ZohoCRMExtractor)
+    mock_zoho.config = ZohoEnvs(enabled=True)
+    mock_zoho.extract.return_value = ExtractionResult(
+        source_name="zoho_crm",
+        enabled=True,
+        has_changes=True,
+        records_extracted=1,
+        files_written=[zoho_file],
+        new_cursor="2026-11-25T00:00:00Z",
+    )
+
+    with patch(
+        "app.modules.eda.orchestration.flows.ejecutar_pipeline_completo",
+        return_value={"run_id": "run-clean-001", "errores": []},
+    ):
+        res = eda_medallion_flow(
+            force_reprocess=False,
+            cleanup_raw_after_load=True,
+            engine=engine,
+            drive_extractor=mock_drive,
+            zoho_extractor=mock_zoho,
+        )
+
+    assert res["status"] == "COMPLETED"
+    assert res["staging_cleaned_files"] == 2
+    assert not drive_file.exists()
+    assert not zoho_file.exists()
