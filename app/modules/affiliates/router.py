@@ -181,3 +181,38 @@ def get_silver_kam_summary(
 
     """
     return DashboardSilverRepository(db).obtener_resumen_kams(fecha_referencia)
+
+
+@affiliates_router.get("/silver/distribution")
+def get_silver_distribution(
+    fecha_referencia: date = Query(default_factory=date.today),
+    kam_id: str | None = None,
+    nivel_membresia: str | None = None,
+    sector: str | None = None,
+    tamano_empresa: str | None = None,
+    ciudad: str | None = None,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Retorna distribución de activos (nivel/sector/tamaño) y vencimientos 30/60/90d.
+
+    Args:
+        fecha_referencia: Fecha base para calcular buckets de vencimiento.
+        kam_id: Identificador opcional de la ejecutiva KAM.
+        nivel_membresia: Nivel de membresía opcional.
+        sector: Sector económico opcional.
+        tamano_empresa: Tamaño de empresa opcional.
+        ciudad: Ciudad opcional.
+        db: Sesión PostgreSQL inyectada mediante ``Depends(get_db)``.
+
+    Returns:
+        Distribución por nivel, sector, tamaño y curva de vencimientos global/KAM.
+
+    """
+    return DashboardSilverRepository(db).obtener_distribucion_afiliados(
+        fecha_referencia=fecha_referencia,
+        kam_id=kam_id,
+        nivel_membresia=nivel_membresia,
+        sector=sector,
+        tamano_empresa=tamano_empresa,
+        ciudad=ciudad,
+    )

@@ -788,3 +788,206 @@ class DashboardSilverRepository:
                 }
             )
         return sorted(resumen, key=lambda item: item["afiliados_activos"], reverse=True)
+
+    def obtener_distribucion_afiliados(
+        self,
+        *,
+        fecha_referencia: date,
+        kam_id: str | None = None,
+        nivel_membresia: str | None = None,
+        sector: str | None = None,
+        tamano_empresa: str | None = None,
+        ciudad: str | None = None,
+    ) -> dict[str, Any]:
+        """Calcula distribución de activos (nivel/sector/tamaño) y curva 30/60/90d."""
+        base = self.session.query(SilverDimEmpresa).filter(
+            SilverDimEmpresa.es_membresia_activa.is_(True)
+        )
+        if kam_id:
+            base = base.filter(SilverDimEmpresa.kam_id == kam_id)
+        if nivel_membresia:
+            base = base.filter(SilverDimEmpresa.nivel_membresia == nivel_membresia)
+        if sector:
+            base = base.filter(SilverDimEmpresa.sector_economico == sector)
+        if tamano_empresa:
+            base = base.filter(SilverDimEmpresa.tamano_empresa == tamano_empresa)
+        if ciudad:
+            base = base.filter(SilverDimEmpresa.ciudad == ciudad)
+
+        total_activos = base.count()
+
+        def _agrupar(col: Any, key_name: str, top_n: int = 12) -> list[dict[str, Any]]:
+            expr = func.coalesce(col, "Sin dato")
+            rows = (
+                base.with_entities(
+                    expr.label("etiqueta"),
+                    func.count(SilverDimEmpresa.id_empresa).label("empresas"),
+                )
+                .group_by(expr)
+                .order_by(func.count(SilverDimEmpresa.id_empresa).desc())
+                .limit(top_n)
+                .all()
+            )
+            return [
+                {
+                    key_name: str(r.etiqueta),
+                    "empresas": int(r.empresas or 0),
+                    "porcentaje": round(
+                        (int(r.empresas or 0) / total_activos) * 100
+                        if total_activos
+                        else 0.0,
+                        1,
+                    ),
+                }
+                for r in rows
+            ]
+
+        ref = fecha_referencia.isoformat()
+        d30 = (fecha_referencia + timedelta(days=30)).isoformat()
+        d60 = (fecha_referencia + timedelta(days=60)).isoformat()
+        d90 = (fecha_referencia + timedelta(days=90)).isoformat()
+
+        kams_map = {
+            k.kam_id: k.responsable_nombre
+            for k in self.session.query(SilverDimKam).all()
+        }
+        exp_rows = base.with_entities(
+            SilverDimEmpresa.kam_id, SilverDimEmpresa.fecha_expiracion
+        ).all()
+
+        global_v = {"vencidos": 0, "d0_30": 0, "d31_60": 0, "d61_90": 0, "total_90d": 0}
+        por_kam: dict[str, dict[str, Any]] = {}
+        for row_kam, f_exp in exp_rows:
+            if not f_exp:
+                continue
+            kam_key = str(row_kam or "KAM-UNASSIGNED")
+            bucket = por_kam.setdefault(
+                kam_key,
+                {
+                    "kam_id": kam_key,
+                    "responsable_nombre": kams_map.get(kam_key, kam_key),
+                    "vencidos": 0,
+                    "d0_30": 0,
+                    "d31_60": 0,
+                    "d61_90": 0,
+                    "total_90d": 0,
+                },
+            )
+            if f_exp < ref:
+                global_v["vencidos"] += 1
+                bucket["vencidos"] += 1
+            elif f_exp <= d30:
+                global_v["d0_30"] += 1
+                global_v["total_90d"] += 1
+                bucket["d0_30"] += 1
+                bucket["total_90d"] += 1
+            elif f_exp <= d60:
+                global_v["d31_60"] += 1
+                global_v["total_90d"] += 1
+                bucket["d31_60"] += 1
+                bucket["total_90d"] += 1
+            elif f_exp <= d90:
+                global_v["d61_90"] += 1
+                global_v["total_90d"] += 1
+                bucket["d61_90"] += 1
+                bucket["total_90d"] += 1
+
+        venc_kam_list = sorted(
+            [v for v in por_kam.values() if v["total_90d"] > 0 or v["vencidos"] > 0],
+            key=lambda item: (item["total_90d"], item["vencidos"]),
+            reverse=True,
+        )
+        return {
+            "fecha_referencia": ref,
+            "total_activos": int(total_activos),
+            "por_nivel": _agrupar(SilverDimEmpresa.nivel_membresia, "nivel", 10),
+            "por_sector": _agrupar(SilverDimEmpresa.sector_economico, "sector", 10),
+            "por_tamano": _agrupar(SilverDimEmpresa.tamano_empresa, "tamano", 8),
+            "vencimientos_global": global_v,
+            "vencimientos_por_kam": venc_kam_list,
+        }
+
+    def obtener_riesgo_participacion_silver(
+        self,
+        *,
+        kam_id: str | None = None,
+        nivel_membresia: str | None = None,
+        sector: str | None = None,
+        limit: int = 500,
+    ) -> dict[str, Any]:
+        """Clasifica afiliados activos en sin participación, monocontacto y multicontacto."""
+        emp_query = (
+            self.session.query(SilverDimEmpresa, SilverDimKam)
+            .outerjoin(SilverDimKam, SilverDimKam.kam_id == SilverDimEmpresa.kam_id)
+            .filter(SilverDimEmpresa.es_membresia_activa.is_(True))
+        )
+        if kam_id:
+            emp_query = emp_query.filter(SilverDimEmpresa.kam_id == kam_id)
+        if nivel_membresia:
+            emp_query = emp_query.filter(
+                SilverDimEmpresa.nivel_membresia == nivel_membresia
+            )
+        if sector:
+            emp_query = emp_query.filter(SilverDimEmpresa.sector_economico == sector)
+
+        activos = emp_query.order_by(
+            SilverDimEmpresa.fecha_expiracion, SilverDimEmpresa.id_empresa
+        ).all()
+
+        asist_stats = {
+            row.id_empresa: (int(row.personas or 0), int(row.asistencias or 0))
+            for row in self.session.query(
+                SilverFactAsistencia.id_empresa,
+                func.count(func.distinct(SilverFactAsistencia.id_persona)).label(
+                    "personas"
+                ),
+                func.count(SilverFactAsistencia.id_asistencia).label("asistencias"),
+            )
+            .filter(SilverFactAsistencia.id_empresa.isnot(None))
+            .group_by(SilverFactAsistencia.id_empresa)
+            .all()
+        }
+
+        sin_part: list[dict[str, Any]] = []
+        monocontacto: list[dict[str, Any]] = []
+        multicontacto_count = 0
+        suma_personas_part = 0
+        empresas_part = 0
+
+        for emp, kam in activos:
+            personas, asistencias = asist_stats.get(emp.id_empresa, (0, 0))
+            registro = {
+                "id_empresa": emp.id_empresa,
+                "kam_id": emp.kam_id,
+                "kam_nombre": kam.responsable_nombre if kam else emp.kam_id,
+                "nivel_membresia": emp.nivel_membresia,
+                "sector_economico": emp.sector_economico,
+                "ciudad": emp.ciudad,
+                "fecha_expiracion": emp.fecha_expiracion,
+                "personas_participantes": personas,
+                "asistencias": asistencias,
+            }
+            if asistencias == 0:
+                sin_part.append(registro)
+            elif personas <= 1:
+                monocontacto.append(registro)
+                suma_personas_part += personas
+                empresas_part += 1
+            else:
+                multicontacto_count += 1
+                suma_personas_part += personas
+                empresas_part += 1
+
+        return {
+            "resumen": {
+                "total_activos": len(activos),
+                "sin_participacion": len(sin_part),
+                "monocontacto": len(monocontacto),
+                "multicontacto": multicontacto_count,
+                "promedio_personas_participantes": round(
+                    suma_personas_part / empresas_part if empresas_part else 0.0, 2
+                ),
+            },
+            "lista_sin_participacion": sin_part[:limit],
+            "lista_monocontacto": monocontacto[:limit],
+        }
