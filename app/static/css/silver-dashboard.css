@@ -685,6 +685,43 @@ tbody tr:hover { background: var(--surface-alt); }
 .gauge-box { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; }
 .gauge-box small { color: var(--muted); font-size: 11px; font-weight: 600; }
 
+.dim-compare-list { display: grid; gap: 12px; margin-bottom: 12px; }
+.dim-card {
+  background: var(--surface-alt);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 6px;
+}
+.dim-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.dim-delta {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.dim-bar-row {
+  display: grid;
+  grid-template-columns: 74px 1fr 38px;
+  gap: 8px;
+  align-items: center;
+  font-size: 11px;
+}
+.dim-bar-row span { color: var(--muted); font-weight: 600; }
+.dim-bar-row b { text-align: right; font-weight: 800; }
+.fill.cyan { background: var(--cyan); }
+
 /* RESPONSIVE */
 @media (max-width: 1220px) {
   .metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
