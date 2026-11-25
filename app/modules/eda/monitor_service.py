@@ -165,7 +165,19 @@ def _consultar_prefect_live(api_url: str) -> dict[str, Any]:
     if "localhost:4200" in candidatos[0] or "127.0.0.1:4200" in candidatos[0]:
         candidatos.append("http://prefect-server:4200/api")
 
-    payload = json.dumps({"limit": 10, "sort": "START_TIME_DESC"}).encode("utf-8")
+    payload = json.dumps(
+        {
+            "flow_runs": {
+                "state": {
+                    "type": {
+                        "any_": ["RUNNING", "COMPLETED", "FAILED", "CRASHED"]
+                    }
+                }
+            },
+            "limit": 10,
+            "sort": "START_TIME_DESC",
+        }
+    ).encode("utf-8")
     for base in candidatos:
         url = f"{base}/flow_runs/filter"
         req = urllib.request.Request(

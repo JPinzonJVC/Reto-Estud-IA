@@ -585,9 +585,14 @@ def _procesar_encuestas_y_movimientos(
     df_enc_orig = bronze["fact_encuestas_satisfaccion"].copy()
 
     df_enc_silver = df_enc_orig.copy()
-    df_enc_silver.insert(
-        3, "id_evento", pd.Series([pd.NA] * len(df_enc_silver), dtype="Int64")
-    )
+    if "id_evento" not in df_enc_silver.columns:
+        df_enc_silver.insert(
+            3, "id_evento", pd.Series([pd.NA] * len(df_enc_silver), dtype="Int64")
+        )
+    else:
+        df_enc_silver["id_evento"] = pd.to_numeric(
+            df_enc_silver["id_evento"], errors="coerce"
+        ).astype("Int64")
     df_enc_silver["estado_resolucion_identidad"] = df_enc_silver.apply(
         _estado_identidad_encuesta, axis=1
     )
@@ -595,10 +600,21 @@ def _procesar_encuestas_y_movimientos(
     df_enc_silver["categoria_nps_adaptado_1_5"] = df_enc_silver[
         "promedio_satisfaccion"
     ].apply(_clasificar_nps_adaptado_1_5)
-    df_enc_silver["pregunta_recomendacion_nps_0_10"] = pd.Series(
-        [np.nan] * len(df_enc_silver), dtype="float64"
-    )
-    df_enc_silver["categoria_nps_0_10"] = "NO_DISPONIBLE_ESCALA_1_5"
+    if "pregunta_recomendacion_nps_0_10" not in df_enc_silver.columns:
+        df_enc_silver["pregunta_recomendacion_nps_0_10"] = pd.Series(
+            [np.nan] * len(df_enc_silver), dtype="float64"
+        )
+        df_enc_silver["categoria_nps_0_10"] = "NO_DISPONIBLE_ESCALA_1_5"
+    else:
+        nps_vals = pd.to_numeric(
+            df_enc_silver["pregunta_recomendacion_nps_0_10"], errors="coerce"
+        )
+        df_enc_silver["pregunta_recomendacion_nps_0_10"] = nps_vals
+        df_enc_silver["categoria_nps_0_10"] = np.where(
+            nps_vals.isna(),
+            "NO_DISPONIBLE_ESCALA_1_5",
+            np.where(nps_vals >= 9, "PROMOTOR", np.where(nps_vals >= 7, "PASIVO", "DETRACTOR")),
+        )
     df_enc_silver = normalizar_dataframe_silver(df_enc_silver, cols_ciudad=("ciudad",))
     df_enc_silver, rech_enc = filtrar_registros_rechazados(
         df_enc_silver,
