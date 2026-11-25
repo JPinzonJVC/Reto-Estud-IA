@@ -434,6 +434,7 @@ def serve_eda_pipeline() -> None:
     eda_medallion_flow.serve(  # type: ignore[attr-defined]
         name=settings.deployment_name,
         schedules=[schedule],
+        limit=1,
     )
 
 
