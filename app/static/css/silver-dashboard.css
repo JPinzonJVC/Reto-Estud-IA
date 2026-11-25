@@ -310,6 +310,37 @@ time {
   margin-bottom: 8px;
 }
 
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-csv {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--violet);
+  border-radius: 7px;
+  color: var(--violet);
+  background: transparent;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.btn-csv:hover {
+  background: var(--violet);
+  color: #fff;
+}
+
+.table-wrap.bounded.compact-table {
+  max-height: 270px;
+  margin-top: 10px;
+}
+
 .chart-toggle {
   display: inline-flex;
   background: var(--soft);
