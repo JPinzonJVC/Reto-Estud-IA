@@ -784,6 +784,34 @@ tbody tr:hover { background: var(--surface-alt); }
   border-radius: 999px;
   transition: width 0.35s ease;
 }
+.etl-progress-fill.is-running {
+  background: linear-gradient(90deg, var(--brand), var(--cyan), var(--brand));
+  background-size: 200% 100%;
+  animation: etlShimmer 1.4s linear infinite;
+}
+.etl-progress-fill.is-failed {
+  background: var(--danger);
+}
+@keyframes etlShimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+.btn-auto {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-alt);
+  color: var(--muted);
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.btn-auto.is-on {
+  border-color: var(--teal);
+  background: var(--teal-soft);
+  color: #048a66;
+}
+[data-theme="dark"] .btn-auto.is-on { color: var(--teal); }
 
 .etl-meta-strip {
   display: grid;

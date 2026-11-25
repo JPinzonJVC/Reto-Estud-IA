@@ -136,24 +136,31 @@ def _format_delta_es(seconds: float, *, future: bool = False) -> str:
 
 
 def _parse_ts(ts_str: str | None, tz: ZoneInfo) -> datetime | None:
-    """Parsea timestamps de auditoría a datetime con zona horaria."""
+    """Parsea timestamps ISO/auditoría (asumiendo UTC si son naive) y convierte a tz."""
     if not ts_str:
         return None
     cleaned = ts_str.strip().replace("Z", "+00:00")
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(cleaned[:19], fmt).replace(tzinfo=tz)
-        except ValueError:
-            continue
     try:
         dt = datetime.fromisoformat(cleaned)
-        return dt if dt.tzinfo else dt.replace(tzinfo=tz)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+        return dt.astimezone(tz)
     except ValueError:
-        return None
+        pass
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+        try:
+            return (
+                datetime.strptime(cleaned[:19], fmt)
+                .replace(tzinfo=ZoneInfo("UTC"))
+                .astimezone(tz)
+            )
+        except ValueError:
+            continue
+    return None
 
 
 def _consultar_prefect_live(api_url: str) -> dict[str, Any]:
-    """Consulta opcionalmente la API de Prefect Server con timeout corto."""
+    """Consulta opcionalmente la API de Prefect Server (flow runs y task runs)."""
     candidatos = [api_url.rstrip("/")]
     if "localhost:4200" in candidatos[0] or "127.0.0.1:4200" in candidatos[0]:
         candidatos.append("http://prefect-server:4200/api")
@@ -170,14 +177,56 @@ def _consultar_prefect_live(api_url: str) -> dict[str, Any]:
         try:
             with urllib.request.urlopen(req, timeout=1.2) as resp:
                 runs = json.loads(resp.read().decode("utf-8"))
+                runs_list = runs if isinstance(runs, list) else []
+                task_runs: list[dict[str, Any]] = []
+                # Consultar task runs del flow run más reciente ejecutado/activo
+                active_run = next(
+                    (
+                        r
+                        for r in runs_list
+                        if str(r.get("state_type", "")).upper()
+                        in {"RUNNING", "COMPLETED", "FAILED"}
+                    ),
+                    None,
+                )
+                if active_run and active_run.get("id"):
+                    t_payload = json.dumps(
+                        {
+                            "task_runs": {
+                                "flow_run_id": {"any_": [active_run["id"]]}
+                            },
+                            "limit": 20,
+                        }
+                    ).encode("utf-8")
+                    t_req = urllib.request.Request(
+                        f"{base}/task_runs/filter",
+                        data=t_payload,
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    try:
+                        with urllib.request.urlopen(t_req, timeout=1.2) as t_resp:
+                            t_data = json.loads(t_resp.read().decode("utf-8"))
+                            if isinstance(t_data, list):
+                                task_runs = t_data
+                    except Exception:
+                        task_runs = []
                 return {
                     "connected": True,
                     "api_url": base,
-                    "flow_runs": runs if isinstance(runs, list) else [],
+                    "flow_runs": runs_list,
+                    "latest_executed_run": active_run,
+                    "task_runs": task_runs,
                 }
         except Exception:
             continue
-    return {"connected": False, "api_url": candidatos[0], "flow_runs": []}
+    return {
+        "connected": False,
+        "api_url": candidatos[0],
+        "flow_runs": [],
+        "latest_executed_run": None,
+        "task_runs": [],
+    }
 
 
 def _resolver_tabla_desde_fuente(fuente: str) -> tuple[str, str, str | None]:
@@ -458,8 +507,8 @@ class EtlMonitorService:
             else "No programada"
         )
 
-        # Verificar el estado más reciente reportado por Prefect Server
-        latest_prefect_run = prefect_live["flow_runs"][0] if prefect_live["flow_runs"] else None
+        # Verificar el estado más reciente ejecutado en Prefect Server (ignorando futuros SCHEDULED)
+        latest_prefect_run = prefect_live.get("latest_executed_run")
         prefect_state_type = (
             str(latest_prefect_run.get("state_type", "")).upper()
             if latest_prefect_run
@@ -475,14 +524,50 @@ class EtlMonitorService:
             if latest_prefect_run
             else None
         )
+        prefect_end_dt = (
+            _parse_ts(latest_prefect_run.get("end_time"), tz)
+            if latest_prefect_run
+            else None
+        )
         prefect_is_newer = bool(
             prefect_start_dt and (last_end_dt is None or prefect_start_dt > last_end_dt)
         )
 
+        # Si Prefect ejecutó una corrida más reciente que la última carga Medallion,
+        # reflejar su timestamp en "Última ejecución" (por ej. revisión sin cambios o fallo).
+        effective_last_dt = (
+            (prefect_end_dt or prefect_start_dt)
+            if prefect_is_newer and (prefect_end_dt or prefect_start_dt)
+            else last_end_dt
+        )
+        ago_label = (
+            _format_delta_es((now_tz - effective_last_dt).total_seconds(), future=False)
+            if effective_last_dt
+            else "Sin ejecuciones"
+        )
+        effective_last_ts = (
+            effective_last_dt.strftime("%Y-%m-%d %H:%M:%S")
+            if effective_last_dt
+            else None
+        )
+
+        prefect_tasks = prefect_live.get("task_runs") or []
         if prefect_state_type == "RUNNING":
             overall_status = "RUNNING"
+            done_t = sum(
+                1
+                for t in prefect_tasks
+                if str(t.get("state_type", "")).upper() == "COMPLETED"
+            )
+            progress_pct = min(95, max(15, int(round((done_t / 4) * 100))))
         elif prefect_is_newer and prefect_state_type == "FAILED":
             overall_status = "FAILED"
+            done_t = sum(
+                1
+                for t in prefect_tasks
+                if str(t.get("state_type", "")).upper() == "COMPLETED"
+            )
+            progress_pct = min(90, max(10, int(round((done_t / 4) * 100))))
         elif ejec_actual and ejec_actual.estado_ejecucion == "EXITOSO":
             overall_status = "COMPLETED"
         else:
@@ -506,12 +591,22 @@ class EtlMonitorService:
                 ),
                 "prefect_latest_state": prefect_state_type or None,
                 "prefect_latest_message": prefect_state_msg or None,
+                "prefect_skipped_no_changes": bool(
+                    prefect_is_newer and prefect_state_type == "COMPLETED"
+                ),
             },
             "timing": {
                 "run_id": ejec_actual.id_ejecucion if ejec_actual else None,
                 "status": overall_status,
-                "last_run_start": ejec_actual.fecha_inicio if ejec_actual else None,
-                "last_run_end": ejec_actual.fecha_finalizacion if ejec_actual else None,
+                "last_run_start": (
+                    last_start_dt.strftime("%Y-%m-%d %H:%M:%S")
+                    if last_start_dt
+                    else None
+                ),
+                "last_run_end": effective_last_ts,
+                "last_medallion_end": (
+                    last_end_dt.strftime("%Y-%m-%d %H:%M:%S") if last_end_dt else None
+                ),
                 "last_run_ago": ago_label,
                 "elapsed_seconds": elapsed_sec,
                 "next_run_iso": (

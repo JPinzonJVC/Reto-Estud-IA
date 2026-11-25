@@ -33,6 +33,7 @@ const state = {
   etlRunId: null,
   etlSelectedStep: null,
   etlAutoTimer: null,
+  etlAutoEnabled: localStorage.getItem('actho-etl-auto') === 'true',
 };
 
 const byId = (id) => document.getElementById(id);
@@ -132,14 +133,28 @@ function setActiveTab(tabName) {
 
   if (isEtl) {
     loadEtlMonitor(state.etlRunId);
-    if (!state.etlAutoTimer) {
-      state.etlAutoTimer = setInterval(() => {
-        if (state.tab === 'etl') loadEtlMonitor(null);
-      }, 10000);
-    }
+    syncEtlAutoRefresh();
   } else if (state.etlAutoTimer) {
     clearInterval(state.etlAutoTimer);
     state.etlAutoTimer = null;
+  }
+}
+
+function syncEtlAutoRefresh() {
+  const btn = byId('etl-autorefresh-btn');
+  if (btn) {
+    btn.classList.toggle('is-on', state.etlAutoEnabled);
+    btn.setAttribute('aria-pressed', String(state.etlAutoEnabled));
+    btn.textContent = state.etlAutoEnabled ? 'Auto-recarga: ON (10s)' : 'Auto-recarga: OFF';
+  }
+  if (state.etlAutoTimer) {
+    clearInterval(state.etlAutoTimer);
+    state.etlAutoTimer = null;
+  }
+  if (state.etlAutoEnabled && state.tab === 'etl') {
+    state.etlAutoTimer = setInterval(() => {
+      if (state.tab === 'etl') loadEtlMonitor(null);
+    }, 10000);
   }
 }
 
@@ -239,15 +254,20 @@ async function loadEtlMonitor(runId = null) {
     if (timing.status === 'FAILED' && flow.prefect_latest_message) {
       byId('etl-status-sub').textContent = `Prefect (${flow.prefect_latest_run_name || 'última corrida'}): ${flow.prefect_latest_message.slice(0, 140)}`;
     } else if (timing.status === 'RUNNING') {
-      byId('etl-status-sub').textContent = `Ejecutando flujo ${flow.prefect_latest_run_name || ''} en Prefect… (auto-actualización cada 10s)`;
+      byId('etl-status-sub').textContent = `Ejecutando flujo ${flow.prefect_latest_run_name || ''} en Prefect…`;
+    } else if (flow.prefect_skipped_no_changes) {
+      byId('etl-status-sub').textContent = `Última revisión Prefect (${flow.prefect_latest_run_name || 'ok'}) sin cambios nuevos en Drive · Última carga Medallion: ${timing.last_medallion_end || '—'}`;
     } else {
       byId('etl-status-sub').textContent = timing.last_run_start
-        ? `Inició ${timing.last_run_start} · Auto-actualización activa (10s)`
+        ? `Carga Medallion inició ${timing.last_run_start} · Cron (${flow.schedule_cron})`
         : 'Aún no hay ejecuciones registradas';
     }
 
     byId('etl-progress-pct').textContent = `${progress.percent}%`;
-    byId('etl-progress-fill').style.width = `${progress.percent}%`;
+    const fillEl = byId('etl-progress-fill');
+    fillEl.style.width = `${progress.percent}%`;
+    fillEl.classList.toggle('is-running', timing.status === 'RUNNING');
+    fillEl.classList.toggle('is-failed', timing.status === 'FAILED');
     byId('etl-last-ago').textContent = timing.last_run_ago;
     byId('etl-last-ts').textContent = timing.last_run_end || '—';
     byId('etl-next-in').textContent = timing.next_run_in;
@@ -1203,7 +1223,13 @@ function applyTheme(dark) {
     : '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
 }
 
-byId('etl-refresh-btn')?.addEventListener('click', () => loadEtlMonitor(state.etlRunId));
+byId('etl-refresh-btn')?.addEventListener('click', () => loadEtlMonitor(null));
+byId('etl-autorefresh-btn')?.addEventListener('click', () => {
+  state.etlAutoEnabled = !state.etlAutoEnabled;
+  localStorage.setItem('actho-etl-auto', String(state.etlAutoEnabled));
+  syncEtlAutoRefresh();
+});
+syncEtlAutoRefresh();
 
 applyTheme(localStorage.getItem('actho-theme') === 'dark');
 byId('theme-toggle').addEventListener('click', () => {
