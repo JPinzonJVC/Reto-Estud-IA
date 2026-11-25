@@ -37,6 +37,10 @@
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
           <span>Satisfacción</span>
         </button>
+        <button class="nav-link" type="button" role="tab" aria-selected="false" data-tab="etl" data-title="Orquestación Prefect & ETL">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="12" r="3"/><path d="M8.7 7.4l6.6 3.2M8.7 16.6l6.6-3.2"/></svg>
+          <span>Orquestación ETL</span>
+        </button>
       </nav>
 
       <div class="sidebar-card">
@@ -352,6 +356,81 @@
               </table>
             </div>
           </article>
+        </div>
+      </section>
+
+      <!-- VISTA 5: ORQUESTACIÓN PREFECT & ETL -->
+      <section class="view-panel" data-view="etl" role="tabpanel">
+        <div class="bento-grid">
+          <article class="panel span-12 etl-hero-card">
+            <div class="etl-hero-top">
+              <div>
+                <p class="eyebrow">FLOW RUNS / <span id="etl-schedule-eyebrow">PROGRAMACIÓN SEMANAL</span></p>
+                <div class="etl-title-row">
+                  <h2 id="etl-flow-name">eda-medallion-weekly-pipeline</h2>
+                  <span id="etl-schedule-pill" class="etl-pill-blue">SEMANAL</span>
+                  <span id="etl-prefect-conn" class="tag soft-violet">Verificando Prefect…</span>
+                </div>
+                <p id="etl-run-meta" class="chart-description">Run ID: — · Deployment: —</p>
+              </div>
+              <button id="etl-refresh-btn" type="button" class="btn-csv">Actualizar estado</button>
+            </div>
+
+            <div class="etl-progress-box">
+              <div class="etl-progress-head">
+                <div class="etl-state-left">
+                  <span id="etl-status-dot" class="status-dot completed"></span>
+                  <strong id="etl-status-text">COMPLETADO</strong>
+                  <small id="etl-status-sub">Cargando última ejecución…</small>
+                </div>
+                <div class="etl-progress-right">
+                  <span>PROGRESO GLOBAL</span>
+                  <strong id="etl-progress-pct">0%</strong>
+                </div>
+              </div>
+              <div class="etl-progress-track">
+                <div id="etl-progress-fill" class="etl-progress-fill" style="width:0%"></div>
+              </div>
+              <div class="etl-meta-strip">
+                <div><span>Última ejecución</span><strong id="etl-last-ago">—</strong><small id="etl-last-ts">—</small></div>
+                <div><span>Próxima ejecución</span><strong id="etl-next-in">—</strong><small id="etl-next-ts">—</small></div>
+                <div><span>Duración</span><strong id="etl-elapsed">—</strong><small>Corrida Medallion</small></div>
+                <div><span>Etapas completadas</span><strong id="etl-steps-ratio">—</strong><small>Flujo activo</small></div>
+                <div><span>Registros cargados</span><strong id="etl-records-loaded">—</strong><small id="etl-records-errors">—</small></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="panel span-7">
+            <div class="panel-head">
+              <div><p class="eyebrow">Flujo Medallion</p><h2>Etapas de ejecución</h2></div>
+              <span id="etl-steps-summary" class="tag soft-violet">—</span>
+            </div>
+            <p class="chart-description">Haz clic en cualquier etapa para consultar su salida real en PostgreSQL, reglas de calidad y reconciliación.</p>
+            <ol id="etl-steps-list" class="etl-steps-list" aria-live="polite"></ol>
+          </article>
+
+          <div class="span-5 etl-right-rail">
+            <article class="panel">
+              <div class="panel-head">
+                <div><p class="eyebrow">Salida del proceso</p><h2 id="etl-output-title">Selecciona una etapa</h2></div>
+                <span id="etl-output-count" class="tag soft-violet">—</span>
+              </div>
+              <p id="etl-output-subtitle" class="chart-description">Aquí verás los registros generados, reglas de calidad aplicadas y una muestra de la tabla de salida.</p>
+              <div id="etl-output-metrics" class="etl-mini-kpis"></div>
+              <div id="etl-output-quality" class="etl-quality-box"></div>
+              <div id="etl-output-table" class="table-wrap bounded compact-table"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-head">
+                <div><p class="eyebrow">Prefect & auditoría</p><h2>Programación e historial</h2></div>
+                <span id="etl-cron-badge" class="tag">—</span>
+              </div>
+              <div id="etl-schedule-details" class="etl-schedule-grid"></div>
+              <ul id="etl-history-list" class="etl-history-list" aria-live="polite"></ul>
+            </article>
+          </div>
         </div>
       </section>
     </section>

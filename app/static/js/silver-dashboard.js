@@ -14,6 +14,8 @@ const endpoints = {
   segments: '/retention/silver/segments',
   engagementRisk: '/retention/silver/engagement-risk',
   exportCsv: '/retention/silver/export',
+  etlStatus: '/etl/monitor/status',
+  etlStepOutput: '/etl/monitor/step-output',
 };
 
 const state = {
@@ -28,6 +30,8 @@ const state = {
   portfolioItems: [],
   lastDistribution: null,
   lastRisk: null,
+  etlRunId: null,
+  etlSelectedStep: null,
 };
 
 const byId = (id) => document.getElementById(id);
@@ -112,6 +116,175 @@ function setActiveTab(tabName) {
   document.querySelectorAll('[data-view]').forEach((panel) => {
     panel.classList.toggle('is-active', panel.dataset.view === tabName);
   });
+  if (tabName === 'etl') {
+    loadEtlMonitor(state.etlRunId);
+  }
+}
+
+function formatDuration(seconds) {
+  if (seconds === null || seconds === undefined) return '—';
+  const s = Number(seconds);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return `${m}m ${rem}s`;
+}
+
+async function inspectEtlStep(step) {
+  state.etlSelectedStep = step.step_id;
+  document.querySelectorAll('.etl-step-item').forEach((el) => {
+    el.classList.toggle('is-selected', el.dataset.stepId === step.step_id);
+  });
+  byId('etl-output-title').textContent = step.title;
+  byId('etl-output-subtitle').textContent = `Flujo: ${step.fuente}`;
+  byId('etl-output-count').textContent = 'Cargando…';
+  byId('etl-output-metrics').innerHTML = `
+    <div><span>Leídos</span><strong>${step.registros_leidos}</strong></div>
+    <div><span>Insertados</span><strong>${step.registros_insertados}</strong></div>
+    <div><span>Rechazados</span><strong>${step.registros_rechazados}</strong></div>`;
+  byId('etl-output-quality').innerHTML = '';
+  byId('etl-output-table').innerHTML = '<p style="padding:12px">Consultando salida ETL…</p>';
+
+  try {
+    const out = await request(
+      endpoints.etlStepOutput +
+        query({
+          output_key: step.output_key,
+          output_type: step.output_type || 'table',
+          limit: 15,
+        })
+    );
+    byId('etl-output-count').textContent = `${out.total_rows} filas`;
+
+    const qualityBlocks = [];
+    if (out.reconciliation) {
+      const r = out.reconciliation;
+      qualityBlocks.push(
+        `<div class="etl-quality-pill"><b>Reconciliación:</b> Bronze ${r.filas_bronze} → Silver ${r.filas_silver} (rechazadas: ${r.filas_rechazadas}, dif: ${r.diferencia})</div>`
+      );
+    }
+    (out.quality_rules || []).slice(0, 4).forEach((q) => {
+      qualityBlocks.push(
+        `<div class="etl-quality-pill"><b>${escapeHtml(q.id_incidencia)} · ${escapeHtml(q.campo)}:</b> ${escapeHtml(q.estado)} (${q.afectados} filas)</div>`
+      );
+    });
+    byId('etl-output-quality').innerHTML = qualityBlocks.join('');
+
+    const cols = out.columns || [];
+    const rows = out.rows || [];
+    if (!cols.length || !rows.length) {
+      byId('etl-output-table').innerHTML = `<p style="padding:12px">${escapeHtml(out.note || 'Sin filas registradas para esta etapa.')}</p>`;
+      return;
+    }
+    byId('etl-output-table').innerHTML = `<table>
+      <thead><tr>${cols.map((c) => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead>
+      <tbody>${rows
+        .map(
+          (row) =>
+            `<tr>${cols
+              .map((c) => `<td title="${escapeHtml(row[c] ?? '')}">${escapeHtml(String(row[c] ?? '—').slice(0, 38))}</td>`)
+              .join('')}</tr>`
+        )
+        .join('')}</tbody>
+    </table>`;
+  } catch (err) {
+    byId('etl-output-count').textContent = 'Error';
+    byId('etl-output-table').innerHTML = '<p style="padding:12px">No fue posible consultar la salida de esta etapa.</p>';
+  }
+}
+
+async function loadEtlMonitor(runId = null) {
+  try {
+    const data = await request(endpoints.etlStatus + query({ run_id: runId }));
+    const { flow, timing, progress, steps, history, quality_summary: qs } = data;
+    state.etlRunId = timing.run_id;
+
+    byId('etl-flow-name').textContent = flow.name;
+    byId('etl-schedule-eyebrow').textContent = flow.schedule_label.toUpperCase();
+    byId('etl-schedule-pill').textContent = flow.schedule_label;
+    byId('etl-prefect-conn').textContent = flow.prefect_connected
+      ? 'Prefect API conectada'
+      : 'Auditoría PostgreSQL';
+    byId('etl-run-meta').textContent = `Run ID: ${timing.run_id || 'Sin ejecuciones'} · Deployment: ${flow.deployment}`;
+
+    const stKey = (timing.status || 'pending').toLowerCase();
+    byId('etl-status-dot').className = `status-dot ${stKey}`;
+    byId('etl-status-text').textContent = timing.status || 'PENDIENTE';
+    byId('etl-status-sub').textContent = timing.last_run_start
+      ? `Inició ${timing.last_run_start} · Programado por cron (${flow.schedule_cron})`
+      : 'Aún no hay ejecuciones registradas';
+
+    byId('etl-progress-pct').textContent = `${progress.percent}%`;
+    byId('etl-progress-fill').style.width = `${progress.percent}%`;
+    byId('etl-last-ago').textContent = timing.last_run_ago;
+    byId('etl-last-ts').textContent = timing.last_run_end || '—';
+    byId('etl-next-in').textContent = timing.next_run_in;
+    byId('etl-next-ts').textContent = timing.next_run_iso || '—';
+    byId('etl-elapsed').textContent = formatDuration(timing.elapsed_seconds);
+    byId('etl-steps-ratio').textContent = `${progress.completed_steps} / ${progress.total_steps}`;
+    byId('etl-records-loaded').textContent = progress.registros_cargados.toLocaleString('es-CO');
+    byId('etl-records-errors').textContent = `${progress.registros_rechazados} rechazados · ${progress.duplicados_identificados} dup.`;
+    byId('etl-steps-summary').textContent = `${progress.completed_steps} de ${progress.total_steps} completadas`;
+
+    const listEl = byId('etl-steps-list');
+    listEl.innerHTML = steps
+      .map((s) => {
+        const cls = (s.status || 'pending').toLowerCase();
+        const num = String(s.order).padStart(2, '0');
+        return `<li class="etl-step-item" data-step-id="${escapeHtml(s.step_id)}">
+          <span class="status-dot ${cls}"></span>
+          <div>
+            <div class="etl-step-title">
+              <span class="etl-step-num">${num}.</span>
+              <span>${escapeHtml(s.title)}</span>
+              <span class="etl-step-badge ${cls}">${escapeHtml(s.status)}</span>
+              <span class="etl-layer-pill">${escapeHtml(s.layer)}</span>
+            </div>
+            <div class="etl-step-sub">${escapeHtml(s.subtitle)} · ${s.registros_insertados} reg.</div>
+          </div>
+          <div class="etl-step-right">
+            <strong>${formatDuration(s.duration_seconds)}</strong>
+            <span>Ver salida →</span>
+          </div>
+        </li>`;
+      })
+      .join('');
+
+    listEl.querySelectorAll('.etl-step-item').forEach((el, idx) => {
+      el.addEventListener('click', () => inspectEtlStep(steps[idx]));
+    });
+
+    const defaultStep =
+      steps.find((s) => s.step_id === state.etlSelectedStep) ||
+      steps.find((s) => s.layer === 'SILVER') ||
+      steps[0];
+    if (defaultStep) inspectEtlStep(defaultStep);
+
+    byId('etl-cron-badge').textContent = flow.schedule_cron;
+    byId('etl-schedule-details').innerHTML = `
+      <div><span>Zona horaria</span><strong>${escapeHtml(flow.schedule_timezone)}</strong></div>
+      <div><span>Fuentes Bronze</span><strong>${qs.fuentes_bronze_verificadas} SHA-256</strong></div>
+      <div><span>Reglas calidad</span><strong>${qs.reglas_calidad} aplicadas</strong></div>
+      <div><span>Duplicados</span><strong>${qs.duplicados_auditados} auditados</strong></div>`;
+
+    const histEl = byId('etl-history-list');
+    histEl.innerHTML =
+      history
+        .map(
+          (h) => `<li class="${h.id_ejecucion === timing.run_id ? 'is-selected' : ''}" data-run-id="${escapeHtml(h.id_ejecucion)}">
+            <div><strong>${escapeHtml(h.id_ejecucion)}</strong><div style="color:var(--muted)">${escapeHtml(h.fecha_inicio)}</div></div>
+            <span class="etl-step-badge ${h.estado_ejecucion === 'EXITOSO' ? 'completed' : 'failed'}">${escapeHtml(h.estado_ejecucion)}</span>
+          </li>`
+        )
+        .join('') || '<li>Sin historial registrado.</li>';
+
+    histEl.querySelectorAll('li[data-run-id]').forEach((li) => {
+      li.addEventListener('click', () => loadEtlMonitor(li.dataset.runId));
+    });
+  } catch (err) {
+    byId('etl-status-text').textContent = 'SIN CONEXIÓN';
+    byId('etl-status-sub').textContent = 'No fue posible consultar /etl/monitor/status.';
+  }
 }
 
 function renderTrendAreaChart(participation, satisfaction) {
@@ -997,6 +1170,8 @@ function applyTheme(dark) {
     ? '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'
     : '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
 }
+
+byId('etl-refresh-btn')?.addEventListener('click', () => loadEtlMonitor(state.etlRunId));
 
 applyTheme(localStorage.getItem('actho-theme') === 'dark');
 byId('theme-toggle').addEventListener('click', () => {
