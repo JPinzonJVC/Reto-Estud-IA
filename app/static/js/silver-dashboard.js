@@ -583,55 +583,55 @@ function renderDimensionsRadar(data) {
   byId('topics-count').textContent = `${data.total_con_temarios} temarios`;
 
   const axes = [
-    { key: 'locacion_plataforma', label: 'Locación / Plat.' },
-    { key: 'convocatoria_publicidad', label: 'Convocatoria' },
+    { key: 'relevancia_temas', label: 'Relevancia de temas' },
     { key: 'conferencistas', label: 'Conferencistas' },
-    { key: 'relevancia_temas', label: 'Relevancia' },
+    { key: 'locacion_plataforma', label: 'Locación / Plataforma' },
+    { key: 'convocatoria_publicidad', label: 'Convocatoria y publicidad' },
   ];
-  const cx = 145;
-  const cy = 105;
-  const rMax = 72;
-  const angles = axes.map((_, i) => -Math.PI / 2 + (i * 2 * Math.PI) / axes.length);
 
-  const rings = [1, 2, 3, 4, 5]
-    .map((lvl) => {
-      const r = (lvl / 5) * rMax;
-      const pts = angles.map((a) => `${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)}`).join(' ');
-      return `<polygon points="${pts}" fill="none" stroke="var(--line)" stroke-width="1"/>`;
-    })
-    .join('');
+  const allVals = rows.flatMap((r) => axes.map((a) => Number(r[a.key] || 0))).filter((v) => v > 0);
+  const minDomain = allVals.length ? Math.max(1, Math.floor((Math.min(...allVals) - 0.25) * 2) / 2) : 4.0;
+  const maxDomain = 5.0;
+  const span = Math.max(maxDomain - minDomain, 0.5);
+  const scaleTag = byId('dimensions-scale-tag');
+  if (scaleTag) scaleTag.textContent = `Zoom ${minDomain.toFixed(1)}–5.0`;
 
-  const spokes = angles
-    .map((a, i) => {
-      const x2 = cx + rMax * Math.cos(a);
-      const y2 = cy + rMax * Math.sin(a);
-      const lx = cx + (rMax + 24) * Math.cos(a);
-      const ly = cy + (rMax + 15) * Math.sin(a);
-      return `<line x1="${cx}" y1="${cy}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="var(--line)"/>
-              <text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="600" fill="var(--muted)">${axes[i].label}</text>`;
-    })
-    .join('');
+  const sortedAxes = [...axes].sort((a, b) => {
+    const avgA = rows.reduce((s, r) => s + Number(r[a.key] || 0), 0) / Math.max(rows.length, 1);
+    const avgB = rows.reduce((s, r) => s + Number(r[b.key] || 0), 0) / Math.max(rows.length, 1);
+    return avgB - avgA;
+  });
 
-  const palette = { Presencial: '#5000bf', Virtual: '#39b8ff' };
-  const polygons = rows
-    .map((row, idx) => {
-      const color = palette[row.modalidad] || (idx === 0 ? '#5000bf' : '#05cd99');
-      const pts = axes
-        .map((ax, i) => {
-          const val = Math.max(0, Math.min(5, Number(row[ax.key] || 0)));
-          const r = (val / 5) * rMax;
-          return `${(cx + r * Math.cos(angles[i])).toFixed(1)},${(cy + r * Math.sin(angles[i])).toFixed(1)}`;
-        })
-        .join(' ');
-      return `<polygon points="${pts}" fill="${color}" fill-opacity="0.18" stroke="${color}" stroke-width="2.4" data-tip="${escapeHtml(row.modalidad)} · Promedio ${row.promedio_general}"/>`;
-    })
-    .join('');
+  const pct = (val) => Math.max(4, Math.min(100, ((val - minDomain) / span) * 100));
 
   byId('dimensions-radar').innerHTML = rows.length
-    ? `<svg class="svg-chart" style="max-height:210px" viewBox="0 0 290 210" role="img" aria-label="Radar de dimensiones de satisfacción">${rings}${spokes}${polygons}</svg>
-       <div class="nps-legend">${rows
-         .map((r, i) => `<span><i style="background:${palette[r.modalidad] || (i === 0 ? '#5000bf' : '#05cd99')}"></i>${escapeHtml(r.modalidad)} (${r.promedio_general})</span>`)
-         .join('')}</div>`
+    ? `<div class="dim-compare-list">${sortedAxes
+        .map((ax) => {
+          const vals = rows.map((r) => ({ mod: r.modalidad, val: Number(r[ax.key] || 0) }));
+          const pres = vals.find((v) => v.mod === 'Presencial');
+          const virt = vals.find((v) => v.mod === 'Virtual');
+          let deltaTxt = '';
+          if (pres && virt) {
+            const diff = pres.val - virt.val;
+            if (Math.abs(diff) < 0.01) deltaTxt = 'Sin brecha';
+            else deltaTxt = diff > 0 ? `+${diff.toFixed(2)} Presencial` : `+${Math.abs(diff).toFixed(2)} Virtual`;
+          }
+          const barsHtml = vals
+            .map((v) => {
+              const cls = v.mod === 'Virtual' ? 'fill cyan' : 'fill';
+              return `<div class="dim-bar-row">
+                <span>${escapeHtml(v.mod)}</span>
+                <div class="track"><div class="${cls}" style="width:${pct(v.val).toFixed(1)}%" data-tip="${escapeHtml(ax.label)} (${escapeHtml(v.mod)}): ${v.val.toFixed(2)} / 5.0"></div></div>
+                <b>${v.val.toFixed(2)}</b>
+              </div>`;
+            })
+            .join('');
+          return `<div class="dim-card">
+            <div class="dim-card-head"><span>${escapeHtml(ax.label)}</span>${deltaTxt ? `<span class="dim-delta">${deltaTxt}</span>` : ''}</div>
+            ${barsHtml}
+          </div>`;
+        })
+        .join('')}</div>`
     : '<p>Sin encuestas para este periodo.</p>';
 
   byId('dimensions-table').innerHTML = `<div class="table-wrap"><table><thead><tr><th>Modalidad</th><th>Resp.</th><th>Loc./Plat.</th><th>Convoc.</th><th>Confer.</th><th>Temas</th></tr></thead><tbody>${
