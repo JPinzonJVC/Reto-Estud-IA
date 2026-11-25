@@ -50,6 +50,10 @@ def test_normalizar_ciudad_y_sector() -> None:
     for variante in ("MEDELLIN", "medellin", "Medellib", "Mediellín"):
         assert normalizar_ciudad(variante) == "Medellín"
     assert normalizar_ciudad("Itagﾃｼí") == "Itagüí"
+    assert normalizar_ciudad("Floridablanca Girón") == "Floridablanca"
+    assert normalizar_ciudad("Antioquia") is None
+    assert normalizar_ciudad("Quindío") is None
+    assert normalizar_ciudad("México") is None
     assert normalizar_ciudad("Ciudad") is None
     assert normalizar_sector("Asociacones Gremiales") == "Asociaciones Gremiales"
     assert normalizar_sector("Tecnologia") == "Tecnología"

@@ -9,7 +9,10 @@ import pandas as pd
 from app.modules.eda.audit import BitacoraAuditoria, filtrar_registros_rechazados
 from app.modules.eda.bronze import guardar_tabla_medallion, homologar_kam_id
 from app.modules.eda.config import ConfiguracionETL
-from app.modules.eda.normalizer import normalizar_dataframe_silver
+from app.modules.eda.normalizer import (
+    extraer_departamento_si_aplica,
+    normalizar_dataframe_silver,
+)
 from app.modules.eda.scd2 import construir_dim_empresas_scd2
 
 COLS_DESCRIPTIVAS_EMPRESA: tuple[str, ...] = (
@@ -182,6 +185,14 @@ def _procesar_dim_empresas(
     )
     cols_disp = [c for c in COLS_DESCRIPTIVAS_EMPRESA if c in df_emp_silver.columns]
     df_emp_silver = df_emp_silver[cols_disp]
+    if "ciudad" in df_emp_silver.columns and "region_departamento" in df_emp_silver.columns:
+        deptos_en_ciudad = df_emp_silver["ciudad"].apply(extraer_departamento_si_aplica)
+        sin_depto = df_emp_silver["region_departamento"].isna() | (
+            df_emp_silver["region_departamento"].astype(str).str.strip() == ""
+        )
+        df_emp_silver.loc[sin_depto & deptos_en_ciudad.notna(), "region_departamento"] = (
+            deptos_en_ciudad[sin_depto & deptos_en_ciudad.notna()]
+        )
     df_emp_silver = normalizar_dataframe_silver(
         df_emp_silver,
         cols_texto=("subsector_economico",),
