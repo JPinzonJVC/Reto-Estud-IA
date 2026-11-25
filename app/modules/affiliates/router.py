@@ -65,6 +65,7 @@ def get_silver_filters(db: Session = Depends(get_db)) -> dict[str, list[str]]:
             "tamanos_empresa",
             "estados_membresia",
             "ciudades",
+            "paises",
         )
     }
 
@@ -77,6 +78,7 @@ def get_silver_portfolio(
     tamano_empresa: str | None = None,
     estado_membresia: str | None = None,
     ciudad: str | None = None,
+    pais: str | None = None,
     solo_activos: bool = True,
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
@@ -107,6 +109,7 @@ def get_silver_portfolio(
         tamano_empresa=tamano_empresa,
         estado_membresia=estado_membresia,
         ciudad=ciudad,
+        pais=pais,
         solo_activos=solo_activos,
         offset=offset,
         limit=limit,
@@ -144,6 +147,7 @@ def get_silver_pillars(
     kam_id: str | None = None,
     nivel_membresia: str | None = None,
     sector: str | None = None,
+    pais: str | None = None,
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Retorna adopción de pilares estratégicos, comunidades y diversidad Silver.
@@ -152,6 +156,7 @@ def get_silver_pillars(
         kam_id: Identificador opcional de la ejecutiva KAM.
         nivel_membresia: Nivel de membresía opcional.
         sector: Sector económico opcional.
+        pais: País de la empresa opcional.
         db: Sesión PostgreSQL inyectada mediante ``Depends(get_db)``.
 
     Returns:
@@ -162,6 +167,7 @@ def get_silver_pillars(
         kam_id=kam_id,
         nivel_membresia=nivel_membresia,
         sector=sector,
+        pais=pais,
     )
 
 
@@ -191,6 +197,7 @@ def get_silver_distribution(
     sector: str | None = None,
     tamano_empresa: str | None = None,
     ciudad: str | None = None,
+    pais: str | None = None,
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Retorna distribución de activos (nivel/sector/tamaño) y vencimientos 30/60/90d.
@@ -202,6 +209,7 @@ def get_silver_distribution(
         sector: Sector económico opcional.
         tamano_empresa: Tamaño de empresa opcional.
         ciudad: Ciudad opcional.
+        pais: País opcional.
         db: Sesión PostgreSQL inyectada mediante ``Depends(get_db)``.
 
     Returns:
@@ -215,4 +223,5 @@ def get_silver_distribution(
         sector=sector,
         tamano_empresa=tamano_empresa,
         ciudad=ciudad,
+        pais=pais,
     )

@@ -44,6 +44,7 @@ class DashboardSilverRepository:
             "tamanos_empresa": values(SilverDimEmpresa.tamano_empresa),
             "estados_membresia": values(SilverDimEmpresa.estado_membresia_detalle),
             "ciudades": values(SilverDimEmpresa.ciudad),
+            "paises": values(SilverDimEmpresa.pais),
             "lineas_oferta": values(SilverDimEvento.linea_oferta_2027),
             "modalidades_evento": values(SilverDimEvento.modalidad),
             "periodos_asistencia": values(SilverFactAsistencia.periodo_mes_iso),
@@ -143,6 +144,7 @@ class DashboardSilverRepository:
         tamano_empresa: str | None,
         estado_membresia: str | None,
         ciudad: str | None,
+        pais: str | None = None,
         solo_activos: bool,
         offset: int,
         limit: int,
@@ -165,6 +167,8 @@ class DashboardSilverRepository:
             )
         if ciudad:
             query = query.filter(SilverDimEmpresa.ciudad == ciudad)
+        if pais:
+            query = query.filter(SilverDimEmpresa.pais == pais)
         if solo_activos:
             query = query.filter(SilverDimEmpresa.es_membresia_activa.is_(True))
 
@@ -190,6 +194,7 @@ class DashboardSilverRepository:
                     "tamano_empresa": empresa.tamano_empresa,
                     "estado_membresia": empresa.estado_membresia_detalle,
                     "ciudad": empresa.ciudad,
+                    "pais": empresa.pais,
                     "fecha_afiliacion": empresa.fecha_afiliacion,
                     "fecha_miembro_desde": empresa.fecha_miembro_desde,
                     "fecha_expiracion": empresa.fecha_expiracion,
@@ -643,6 +648,7 @@ class DashboardSilverRepository:
         kam_id: str | None = None,
         nivel_membresia: str | None = None,
         sector: str | None = None,
+        pais: str | None = None,
     ) -> dict[str, Any]:
         """Calcula adopción de pilares estratégicos y diversidad en activos Silver."""
         query = self.session.query(SilverDimEmpresa).filter(
@@ -654,6 +660,8 @@ class DashboardSilverRepository:
             query = query.filter(SilverDimEmpresa.nivel_membresia == nivel_membresia)
         if sector:
             query = query.filter(SilverDimEmpresa.sector_economico == sector)
+        if pais:
+            query = query.filter(SilverDimEmpresa.pais == pais)
 
         total_activos = query.count()
         campos = (
@@ -798,6 +806,7 @@ class DashboardSilverRepository:
         sector: str | None = None,
         tamano_empresa: str | None = None,
         ciudad: str | None = None,
+        pais: str | None = None,
     ) -> dict[str, Any]:
         """Calcula distribución de activos (nivel/sector/tamaño) y curva 30/60/90d."""
         base = self.session.query(SilverDimEmpresa).filter(
@@ -813,6 +822,8 @@ class DashboardSilverRepository:
             base = base.filter(SilverDimEmpresa.tamano_empresa == tamano_empresa)
         if ciudad:
             base = base.filter(SilverDimEmpresa.ciudad == ciudad)
+        if pais:
+            base = base.filter(SilverDimEmpresa.pais == pais)
 
         total_activos = base.count()
 
@@ -913,6 +924,7 @@ class DashboardSilverRepository:
         kam_id: str | None = None,
         nivel_membresia: str | None = None,
         sector: str | None = None,
+        pais: str | None = None,
         limit: int = 500,
     ) -> dict[str, Any]:
         """Clasifica afiliados activos en sin participación, monocontacto y multicontacto."""
@@ -929,6 +941,8 @@ class DashboardSilverRepository:
             )
         if sector:
             emp_query = emp_query.filter(SilverDimEmpresa.sector_economico == sector)
+        if pais:
+            emp_query = emp_query.filter(SilverDimEmpresa.pais == pais)
 
         activos = emp_query.order_by(
             SilverDimEmpresa.fecha_expiracion, SilverDimEmpresa.id_empresa

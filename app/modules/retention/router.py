@@ -104,6 +104,7 @@ def get_silver_engagement_risk(
     kam_id: str | None = None,
     nivel_membresia: str | None = None,
     sector: str | None = None,
+    pais: str | None = None,
     limit: int = Query(default=500, ge=1, le=2000),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
@@ -113,6 +114,7 @@ def get_silver_engagement_risk(
         kam_id: Identificador opcional de la ejecutiva KAM.
         nivel_membresia: Nivel de membresía opcional.
         sector: Sector económico opcional.
+        pais: País de la empresa opcional.
         limit: Máximo de registros por lista.
         db: Sesión PostgreSQL inyectada mediante ``Depends(get_db)``.
 
@@ -124,6 +126,7 @@ def get_silver_engagement_risk(
         kam_id=kam_id,
         nivel_membresia=nivel_membresia,
         sector=sector,
+        pais=pais,
         limit=limit,
     )
 
@@ -134,6 +137,7 @@ def export_silver_segment_csv(
     kam_id: str | None = None,
     nivel_membresia: str | None = None,
     sector: str | None = None,
+    pais: str | None = None,
     fecha_referencia: date = Query(default_factory=date.today),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
@@ -144,6 +148,7 @@ def export_silver_segment_csv(
         kam_id: Identificador opcional de la ejecutiva KAM.
         nivel_membresia: Nivel de membresía opcional.
         sector: Sector económico opcional.
+        pais: País de la empresa opcional.
         fecha_referencia: Fecha base para vencimientos próximos a 90 días.
         db: Sesión PostgreSQL inyectada mediante ``Depends(get_db)``.
 
@@ -160,6 +165,7 @@ def export_silver_segment_csv(
             kam_id=kam_id,
             nivel_membresia=nivel_membresia,
             sector=sector,
+            pais=pais,
             limit=2000,
         )
         rows = (
