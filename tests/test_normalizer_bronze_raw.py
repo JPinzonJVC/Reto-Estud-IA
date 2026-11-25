@@ -13,6 +13,7 @@ from app.modules.eda.normalizer import (
     normalizar_ciudad,
     normalizar_encabezado_snake_case,
     normalizar_fecha_iso,
+    normalizar_pais,
     normalizar_sector,
 )
 
@@ -57,6 +58,9 @@ def test_normalizar_ciudad_y_sector() -> None:
     assert normalizar_ciudad("Ciudad") is None
     assert normalizar_sector("Asociacones Gremiales") == "Asociaciones Gremiales"
     assert normalizar_sector("Tecnologia") == "Tecnología"
+    assert normalizar_pais("COLOMBIA") == "Colombia"
+    assert normalizar_pais("Colomba") == "Colombia"
+    assert normalizar_pais("Guatemala") == "Guatemala"
 
 
 def test_ingesta_raw_bronze_y_normalizacion_evento(tmp_path: Path) -> None:

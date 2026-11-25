@@ -129,6 +129,22 @@ PAISES_NO_CIUDAD: frozenset[str] = frozenset(
 
 CIUDADES_INVALIDAS: frozenset[str] = frozenset({"ciudad", "huy", "sin dato", "na", "n a"})
 
+PAISES_CANONICOS: dict[str, str] = {
+    "colombia": "Colombia",
+    "colomba": "Colombia",
+    "guatemala": "Guatemala",
+    "mexico": "México",
+    "espana": "España",
+    "peru": "Perú",
+    "chile": "Chile",
+    "argentina": "Argentina",
+    "ecuador": "Ecuador",
+    "panama": "Panamá",
+    "venezuela": "Venezuela",
+    "estados unidos": "Estados Unidos",
+    "usa": "Estados Unidos",
+}
+
 SECTORES_CANONICOS: dict[str, str] = {
     "asociacones gremiales": "Asociaciones Gremiales",
     "asociaciones gremiales": "Asociaciones Gremiales",
@@ -341,6 +357,27 @@ def normalizar_ciudad(valor: Any) -> str | None:
     return texto
 
 
+def normalizar_pais(valor: Any) -> str | None:
+    """Homologa variantes ortográficas y de mayúsculas en nombres de países.
+
+    Args:
+        valor: Nombre de país proveniente del CRM.
+
+    Returns:
+        Nombre canónico del país o None si es nulo.
+
+    """
+    texto = limpiar_texto_y_mojibake(valor)
+    if texto is None:
+        return None
+    clave = _clave_canonica(texto)
+    if clave in PAISES_CANONICOS:
+        return PAISES_CANONICOS[clave]
+    if texto.isupper() or texto.islower():
+        return _title_case_es(texto)
+    return texto
+
+
 def normalizar_sector(valor: Any) -> str | None:
     """Homologa variantes ortográficas y de tildes en sectores económicos.
 
@@ -367,6 +404,7 @@ def normalizar_dataframe_silver(
     cols_fecha: tuple[str, ...] = (),
     cols_ciudad: tuple[str, ...] = (),
     cols_sector: tuple[str, ...] = (),
+    cols_pais: tuple[str, ...] = (),
 ) -> pd.DataFrame:
     """Aplica reglas de normalización Silver sobre columnas de texto, bool, fecha y catálogos.
 
@@ -377,6 +415,7 @@ def normalizar_dataframe_silver(
         cols_fecha: Columnas de fecha a estandarizar en formato ISO YYYY-MM-DD.
         cols_ciudad: Columnas geográficas de ciudad a homologar.
         cols_sector: Columnas de sector económico a homologar.
+        cols_pais: Columnas de país a homologar.
 
     Returns:
         Copia del DataFrame con las columnas normalizadas.
@@ -389,6 +428,9 @@ def normalizar_dataframe_silver(
     for col in cols_ciudad:
         if col in resultado.columns:
             resultado[col] = resultado[col].apply(normalizar_ciudad)
+    for col in cols_pais:
+        if col in resultado.columns:
+            resultado[col] = resultado[col].apply(normalizar_pais)
     for col in cols_sector:
         if col in resultado.columns:
             resultado[col] = resultado[col].apply(normalizar_sector)
