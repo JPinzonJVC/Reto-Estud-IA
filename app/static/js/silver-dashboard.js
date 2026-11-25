@@ -1,0 +1,35 @@
+const endpoints={overview:'/dashboard/overview',affiliateFilters:'/affiliates/silver/filters',analyticsFilters:'/analytics/silver/filters',portfolio:'/affiliates/silver/portfolio',renewals:'/affiliates/silver/renewals',participation:'/analytics/silver/participation',satisfaction:'/analytics/silver/satisfaction',segments:'/retention/silver/segments'};
+const state={chart:'bars'};const byId=(id)=>document.getElementById(id);const request=async(url)=>{const response=await fetch(url);if(!response.ok)throw new Error(url);return response.json()};
+const appendOptions=(element,values,formatter=(value)=>value)=>values.forEach(value=>{const option=document.createElement('option');option.value=value;option.textContent=formatter(value);element.append(option)});
+const periodBounds=(period)=>period?{fecha_desde:`${period}-01`,fecha_hasta:`${period}-31`}:{};
+function query(params){const clean=Object.entries(params).filter(([,value])=>value);return clean.length?`?${new URLSearchParams(clean)}`:''}
+function renderBars(items){const maximum=Math.max(...items.map(item=>item.asistencias),1);byId('participation-view').innerHTML=`<div class="bar-list">${items.map(item=>`<div class="bar-row"><span>${item.nombre_evento||'Evento sin nombre'}</span><div class="track"><div class="fill" style="width:${item.asistencias/maximum*100}%"></div></div><b>${item.asistencias}</b></div>`).join('')||'<p>Sin asistencias para estos filtros.</p>'}</div>`}
+function renderParticipation(items){if(state.chart==='bars')return renderBars(items);byId('participation-view').innerHTML=`<div class="table-wrap"><table><thead><tr><th>Evento</th><th>Línea</th><th>Asistencias</th><th>Empresas</th></tr></thead><tbody>${items.map(item=>`<tr><td>${item.nombre_evento||'—'}</td><td>${item.linea_oferta||'—'}</td><td>${item.asistencias}</td><td>${item.empresas_distintas}</td></tr>`).join('')}</tbody></table></div>`}
+function renderPortfolio(data){byId('portfolio-total').textContent=`${data.total} empresas`;byId('portfolio-body').innerHTML=data.items.map(item=>`<tr><td>${item.id_empresa}</td><td>${item.kam_nombre||item.kam_id}</td><td>${item.nivel_membresia||'—'}</td><td>${item.ciudad||'—'}</td><td>${item.fecha_expiracion||'—'}</td></tr>`).join('')||'<tr><td colspan="5">Sin resultados para estos filtros.</td></tr>'}
+function renderSatisfaction(items){byId('satisfaction-body').innerHTML=items.map(item=>`<tr><td>${item.periodo_mes||'Sin periodo'}</td><td>${item.respuestas}</td><td>${item.promedio_satisfaccion}</td><td>${item.nps_adaptado_1_5}</td></tr>`).join('')||'<tr><td colspan="4">Sin encuestas para este periodo.</td></tr>'}
+function renderSegments(data){const rows=[...data.vencimientos_proximos.map(row=>`Contactar ${row.id_empresa}<small>Vence ${row.fecha_expiracion} · ${row.kam_id}</small>`),...data.afiliados_sin_participacion.map(row=>`Activar ${row.id_empresa}<small>Sin participación · ${row.kam_id}</small>`),...data.asistentes_no_afiliados.map(row=>`Convertir asistente ${row.id_persona}<small>Evento ${row.id_evento}</small>`)].slice(0,4);byId('segments-list').innerHTML=rows.map(row=>`<li>${row}</li>`).join('')||'<li>Sin acciones pendientes.</li>'}
+async function refresh(){const period=byId('period-filter').value;const kam=byId('kam-filter').value;const level=byId('level-filter').value;const city=byId('city-filter').value;const dates=periodBounds(period);byId('filter-status').textContent='Actualizando indicadores…';try{const [portfolio,renewals,participation,satisfaction,segments]=await Promise.all([request(endpoints.portfolio+query({kam_id:kam,nivel_membresia:level,ciudad:city})),request(endpoints.renewals+query({kam_id:kam,periodo_desde:period,periodo_hasta:period})),request(endpoints.participation+query({...dates,kam_id:kam})),request(endpoints.satisfaction+query(dates)),request(endpoints.segments)]);renderPortfolio(portfolio);renderParticipation(participation);renderSatisfaction(satisfaction);renderSegments(segments);byId('renewal-count').textContent=renewals.reduce((sum,item)=>sum+item.renovaciones,0);byId('attendance-count').textContent=participation.reduce((sum,item)=>sum+item.asistencias,0);const activeSatisfaction=satisfaction.length?satisfaction.reduce((sum,item)=>sum+item.promedio_satisfaccion,0)/satisfaction.length:0;byId('satisfaction-score').textContent=activeSatisfaction.toFixed(2);byId('filter-status').textContent=`Filtros aplicados: ${period||'todos los periodos'} · ${kam||'todas las KAM'}.`}catch(error){byId('filter-status').textContent='No fue posible actualizar algunos indicadores.'}}
+async function initialize(){try{const [overview,affiliateFilters,analyticsFilters]=await Promise.all([request(endpoints.overview),request(endpoints.affiliateFilters),request(endpoints.analyticsFilters)]);byId('data-date').textContent=`Corte: ${overview.fecha_referencia}`;byId('active-count').textContent=overview.afiliados_activos;byId('service-rate').textContent=`${overview.porcentaje_afiliados_en_servicios}%`;byId('expiring-count').textContent=overview.vencimientos_proximos['90'];appendOptions(byId('period-filter'),analyticsFilters.periodos_asistencia,value=>new Intl.DateTimeFormat('es-CO',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(`${value}-01T00:00:00Z`)));appendOptions(byId('kam-filter'),affiliateFilters.kams);appendOptions(byId('level-filter'),affiliateFilters.niveles_membresia);appendOptions(byId('city-filter'),affiliateFilters.ciudades);await refresh()}catch(error){byId('filter-status').textContent='No fue posible cargar el dashboard.'}}
+document.querySelectorAll('.filters select').forEach(element => element.addEventListener('change', refresh));
+byId('clear-filters').addEventListener('click', () => {
+  document.querySelectorAll('.filters select').forEach(element => { element.value = ''; });
+  refresh();
+});
+document.querySelectorAll('[data-chart]').forEach(button => button.addEventListener('click', () => {
+  document.querySelectorAll('[data-chart]').forEach(item => item.classList.remove('is-active'));
+  button.classList.add('is-active');
+  state.chart = button.dataset.chart;
+  refresh();
+}));
+const storedTheme = localStorage.getItem('actho-theme');
+if (storedTheme === 'dark') {
+  document.documentElement.dataset.theme = 'dark';
+  byId('theme-toggle').textContent = 'Modo claro';
+}
+byId('theme-toggle').addEventListener('click', () => {
+  const dark = document.documentElement.dataset.theme !== 'dark';
+  document.documentElement.dataset.theme = dark ? 'dark' : '';
+  localStorage.setItem('actho-theme', dark ? 'dark' : 'light');
+  byId('theme-toggle').textContent = dark ? 'Modo claro' : 'Modo oscuro';
+});
+initialize();

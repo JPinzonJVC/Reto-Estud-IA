@@ -77,5 +77,23 @@ def render_dashboard(request: Request) -> Any:
     return HTMLResponse("<h1>Reto EstudIA - Plataforma de Analítica y ML</h1>")
 
 
+@app.get("/dashboard/silver", response_class=HTMLResponse)
+def render_silver_dashboard(request: Request) -> Any:
+    """Renderiza el tablero operativo conectado a endpoints Silver.
+
+    Args:
+        request: Solicitud HTTP requerida por Jinja2.
+
+    Returns:
+        Plantilla HTML del dashboard Silver de ACTHO.
+
+    """
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard/silver.html",
+        context={"title": "ACTHO 360 - Dashboard Silver"},
+    )
+
+
 if __name__ == "__main__":
     uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
