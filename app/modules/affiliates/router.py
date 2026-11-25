@@ -51,13 +51,20 @@ def get_silver_filters(db: Session = Depends(get_db)) -> dict[str, list[str]]:
         db: Sesión PostgreSQL inyectada mediante ``Depends(get_db)``.
 
     Returns:
-        Catálogos de KAM, nivel de membresía, sector y ciudad.
+        Catálogos de KAM, nivel, sector, tamaño, estado de membresía y ciudad.
 
     """
     filters = DashboardSilverRepository(db).obtener_filtros()
     return {
         key: filters[key]
-        for key in ("kams", "niveles_membresia", "sectores", "ciudades")
+        for key in (
+            "kams",
+            "niveles_membresia",
+            "sectores",
+            "tamanos_empresa",
+            "estados_membresia",
+            "ciudades",
+        )
     }
 
 
@@ -66,6 +73,8 @@ def get_silver_portfolio(
     kam_id: str | None = None,
     nivel_membresia: str | None = None,
     sector: str | None = None,
+    tamano_empresa: str | None = None,
+    estado_membresia: str | None = None,
     ciudad: str | None = None,
     solo_activos: bool = True,
     offset: int = Query(default=0, ge=0),
@@ -78,6 +87,8 @@ def get_silver_portfolio(
         kam_id: Identificador opcional de la ejecutiva de cuenta.
         nivel_membresia: Nivel de membresía opcional.
         sector: Sector económico opcional.
+        tamano_empresa: Tamaño de empresa opcional.
+        estado_membresia: Estado detallado de membresía opcional.
         ciudad: Ciudad opcional.
         solo_activos: Si es True, incluye solo membresías activas.
         offset: Desplazamiento para paginación.
@@ -92,6 +103,8 @@ def get_silver_portfolio(
         kam_id=kam_id,
         nivel_membresia=nivel_membresia,
         sector=sector,
+        tamano_empresa=tamano_empresa,
+        estado_membresia=estado_membresia,
         ciudad=ciudad,
         solo_activos=solo_activos,
         offset=offset,
