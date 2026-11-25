@@ -668,7 +668,8 @@ function renderEngagementRisk(data) {
   const kam = byId('kam-filter').value;
   const level = byId('level-filter').value;
   const sector = byId('sector-filter').value;
-  const qs = query({ kam_id: kam, nivel_membresia: level, sector });
+  const country = byId('country-filter').value;
+  const qs = query({ kam_id: kam, nivel_membresia: level, sector, pais: country });
   byId('export-risk-btn').href = `${endpoints.exportCsv}/${state.riskTab}${qs}`;
 }
 
@@ -702,6 +703,7 @@ async function refresh() {
   const sector = byId('sector-filter').value;
   const size = byId('size-filter').value;
   const membershipStatus = byId('membership-status-filter').value;
+  const country = byId('country-filter').value;
   const city = byId('city-filter').value;
   const eventCity = byId('event-city-filter').value;
   const line = byId('line-filter').value;
@@ -732,6 +734,7 @@ async function refresh() {
             tamano_empresa: size,
             estado_membresia: membershipStatus,
             ciudad: city,
+            pais: country,
           })
       ),
       request(
@@ -757,7 +760,9 @@ async function refresh() {
             modalidad: modality,
           })
       ),
-      request(endpoints.pillars + query({ kam_id: kam, nivel_membresia: level, sector })),
+      request(
+        endpoints.pillars + query({ kam_id: kam, nivel_membresia: level, sector, pais: country })
+      ),
       request(endpoints.kams),
       request(
         endpoints.distribution +
@@ -767,9 +772,13 @@ async function refresh() {
             sector,
             tamano_empresa: size,
             ciudad: city,
+            pais: country,
           })
       ),
-      request(endpoints.engagementRisk + query({ kam_id: kam, nivel_membresia: level, sector })),
+      request(
+        endpoints.engagementRisk +
+          query({ kam_id: kam, nivel_membresia: level, sector, pais: country })
+      ),
       request(endpoints.satisfaction + query(dates)),
       request(endpoints.dimensions + query(dates)),
       request(endpoints.segments),
@@ -829,6 +838,7 @@ async function initialize() {
     appendOptions(byId('sector-filter'), affiliateFilters.sectores);
     appendOptions(byId('size-filter'), affiliateFilters.tamanos_empresa || []);
     appendOptions(byId('membership-status-filter'), affiliateFilters.estados_membresia || []);
+    appendOptions(byId('country-filter'), affiliateFilters.paises || []);
     appendOptions(byId('city-filter'), affiliateFilters.ciudades);
     appendOptions(byId('event-city-filter'), analyticsFilters.ciudades_evento || []);
     appendOptions(byId('line-filter'), analyticsFilters.lineas_oferta || []);
