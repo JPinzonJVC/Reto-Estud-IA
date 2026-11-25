@@ -105,6 +105,7 @@ function smoothPath(points) {
 
 function setActiveTab(tabName) {
   state.tab = tabName;
+  const isEtl = tabName === 'etl';
   document.querySelectorAll('[data-tab]').forEach((btn) => {
     const active = btn.dataset.tab === tabName;
     btn.classList.toggle('is-active', active);
@@ -116,7 +117,19 @@ function setActiveTab(tabName) {
   document.querySelectorAll('[data-view]').forEach((panel) => {
     panel.classList.toggle('is-active', panel.dataset.view === tabName);
   });
-  if (tabName === 'etl') {
+
+  // Ocultar filtros y KPIs de afiliados en la vista de Orquestación ETL
+  const filterBtn = byId('toggle-filters-btn');
+  const filterDrawer = byId('filters-drawer');
+  const kpiGrid = document.querySelector('.metric-grid');
+  if (filterBtn) filterBtn.hidden = isEtl;
+  if (filterDrawer && isEtl) {
+    filterDrawer.hidden = true;
+    filterBtn?.setAttribute('aria-expanded', 'false');
+  }
+  if (kpiGrid) kpiGrid.hidden = isEtl;
+
+  if (isEtl) {
     loadEtlMonitor(state.etlRunId);
   }
 }

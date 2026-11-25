@@ -154,20 +154,30 @@ def _parse_ts(ts_str: str | None, tz: ZoneInfo) -> datetime | None:
 
 def _consultar_prefect_live(api_url: str) -> dict[str, Any]:
     """Consulta opcionalmente la API de Prefect Server con timeout corto."""
-    url = f"{api_url.rstrip('/')}/flow_runs/filter"
-    payload = json.dumps({"limit": 5, "sort": "START_TIME_DESC"}).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=1.2) as resp:
-            runs = json.loads(resp.read().decode("utf-8"))
-            return {"connected": True, "flow_runs": runs if isinstance(runs, list) else []}
-    except Exception:
-        return {"connected": False, "flow_runs": []}
+    candidatos = [api_url.rstrip("/")]
+    if "localhost:4200" in candidatos[0] or "127.0.0.1:4200" in candidatos[0]:
+        candidatos.append("http://prefect-server:4200/api")
+
+    payload = json.dumps({"limit": 10, "sort": "START_TIME_DESC"}).encode("utf-8")
+    for base in candidatos:
+        url = f"{base}/flow_runs/filter"
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=1.2) as resp:
+                runs = json.loads(resp.read().decode("utf-8"))
+                return {
+                    "connected": True,
+                    "api_url": base,
+                    "flow_runs": runs if isinstance(runs, list) else [],
+                }
+        except Exception:
+            continue
+    return {"connected": False, "api_url": candidatos[0], "flow_runs": []}
 
 
 def _resolver_tabla_desde_fuente(fuente: str) -> tuple[str, str, str | None]:
