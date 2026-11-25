@@ -13,13 +13,22 @@ const endpoints = {
   segments: '/retention/silver/segments',
 };
 
-const state = { chart: 'bars', insight: 'trend', audience: 'roles' };
+const state = {
+  tab: 'overview',
+  chart: 'bars',
+  insight: 'trend',
+  audience: 'roles',
+  kamView: 'chart',
+  portfolioItems: [],
+};
+
 const byId = (id) => document.getElementById(id);
 const request = async (url) => {
   const response = await fetch(url);
   if (!response.ok) throw new Error(url);
   return response.json();
 };
+
 const appendOptions = (element, values, formatter = (value) => value) =>
   values.forEach((value) => {
     const option = document.createElement('option');
@@ -27,170 +36,39 @@ const appendOptions = (element, values, formatter = (value) => value) =>
     option.textContent = formatter(value);
     element.append(option);
   });
+
 const periodBounds = (period) =>
   period ? { fecha_desde: `${period}-01`, fecha_hasta: `${period}-31` } : {};
+
 function query(params) {
   const clean = Object.entries(params).filter(([, value]) => value);
   return clean.length ? `?${new URLSearchParams(clean)}` : '';
 }
 
-function renderBars(items) {
-  const top = [...items].sort((a, b) => b.asistencias - a.asistencias).slice(0, 10);
-  const maximum = Math.max(...top.map((item) => item.asistencias), 1);
-  byId('participation-view').innerHTML = `<div class="bar-list">${
-    top
-      .map(
-        (item) =>
-          `<div class="bar-row"><span title="${item.nombre_evento || ''}">${item.nombre_evento || 'Evento sin nombre'}</span><div class="track"><div class="fill" style="width:${(item.asistencias / maximum) * 100}%"></div></div><b>${item.asistencias}</b></div>`
-      )
-      .join('') || '<p>Sin asistencias para estos filtros.</p>'
-  }</div>`;
+function escapeHtml(text) {
+  return String(text ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
 }
 
-function renderParticipation(items) {
-  if (state.chart === 'bars') return renderBars(items);
-  if (state.chart === 'donut') {
-    const top = [...items].sort((a, b) => b.asistencias - a.asistencias).slice(0, 8);
-    const total = top.reduce((sum, item) => sum + item.asistencias, 0);
-    const colors = ['#5000bf', '#ff5a00', '#75bdbb', '#9f7aea', '#2b6cb0', '#d69e2e', '#38a169', '#e53e3e'];
-    let offset = 0;
-    const slices = top
-      .map((item, index) => {
-        const share = total ? item.asistencias / total : 0;
-        const circle = `<circle cx="50" cy="50" r="38" pathLength="100" stroke="${colors[index % colors.length]}" stroke-dasharray="${share * 100} ${100 - share * 100}" stroke-dashoffset="${-offset}"/>`;
-        offset += share * 100;
-        return circle;
-      })
-      .join('');
-    byId('participation-view').innerHTML = total
-      ? `<div class="donut-layout"><svg class="donut" viewBox="0 0 100 100" role="img" aria-label="Distribución de asistencias por evento"><circle class="donut-base" cx="50" cy="50" r="38"/>${slices}<text x="50" y="48">${total}</text><text x="50" y="59">top 8</text></svg><ul class="legend">${top
-          .map(
-            (item, index) =>
-              `<li><i style="background:${colors[index % colors.length]}"></i><span>${item.nombre_evento || 'Evento'}</span><b>${item.asistencias}</b></li>`
-          )
-          .join('')}</ul></div>`
-      : '<p>Sin asistencias para estos filtros.</p>';
-    return;
-  }
-  byId('participation-view').innerHTML = `<div class="table-wrap"><table><thead><tr><th>Evento</th><th>Línea</th><th>Asistencias</th><th>Afiliados</th><th>Leads</th><th>Empresas</th></tr></thead><tbody>${
-    items
-      .map(
-        (item) =>
-          `<tr><td>${item.nombre_evento || '—'}</td><td>${item.linea_oferta || '—'}</td><td>${item.asistencias}</td><td>${item.asistentes_afiliados ?? '—'}</td><td>${item.asistentes_no_afiliados ?? '—'}</td><td>${item.empresas_distintas}</td></tr>`
-      )
-      .join('') || '<tr><td colspan="6">Sin asistencias para estos filtros.</td></tr>'
-  }</tbody></table></div>`;
+function setActiveTab(tabName) {
+  state.tab = tabName;
+  document.querySelectorAll('[data-tab]').forEach((btn) => {
+    const active = btn.dataset.tab === tabName;
+    btn.classList.toggle('is-active', active);
+    btn.setAttribute('aria-selected', String(active));
+  });
+  document.querySelectorAll('[data-view]').forEach((panel) => {
+    panel.classList.toggle('is-active', panel.dataset.view === tabName);
+  });
 }
 
-function renderAudience(data) {
-  const target = byId('audience-view');
-  const desc = byId('audience-description');
-  if (state.audience === 'roles') {
-    const items = data.niveles_cargo || [];
-    const max = Math.max(...items.map((item) => item.asistencias), 1);
-    desc.textContent = 'Distribución de asistencias según el nivel jerárquico del participante.';
-    target.innerHTML = `<div class="bar-list">${
-      items
-        .map(
-          (item) =>
-            `<div class="bar-row"><span>${item.nivel_cargo}</span><div class="track"><div class="fill" style="width:${(item.asistencias / max) * 100}%"></div></div><b>${item.asistencias}</b></div>`
-        )
-        .join('') || '<p>Sin datos de audiencia para estos filtros.</p>'
-    }</div>`;
-    return;
-  }
-  const items = state.audience === 'lines' ? data.lineas_oferta || [] : data.modalidades || [];
-  const labelKey = state.audience === 'lines' ? 'linea_oferta' : 'modalidad';
-  const max = Math.max(...items.map((item) => item.asistencias), 1);
-  desc.textContent =
-    state.audience === 'lines'
-      ? 'Afiliados (violeta) vs. No afiliados / Leads (naranja) por línea de oferta 2027.'
-      : 'Afiliados (violeta) vs. No afiliados / Leads (naranja) por modalidad de evento.';
-  target.innerHTML = `<div class="bar-list">${
-    items
-      .map((item) => {
-        const afPct = (item.afiliados / max) * 100;
-        const noAfPct = (item.no_afiliados / max) * 100;
-        return `<div class="bar-row"><span>${item[labelKey]}</span><div class="track stacked-track"><div class="fill" style="width:${afPct}%" title="Afiliados: ${item.afiliados}"></div><div class="fill lead" style="width:${noAfPct}%" title="No afiliados: ${item.no_afiliados}"></div></div><b>${item.asistencias}</b></div>`;
-      })
-      .join('') || '<p>Sin datos para estos filtros.</p>'
-  }</div><div class="nps-legend"><span><i style="background:var(--violet)"></i>Afiliados</span><span><i style="background:var(--orange)"></i>No afiliados (Leads)</span></div>`;
-}
-
-function renderPillars(data) {
-  const items = data.pilares || [];
-  byId('pillars-description').textContent = `Adopción sobre ${data.total_activos} afiliados activos en el filtro actual.`;
-  byId('women-share').textContent =
-    data.porcentaje_mujeres_promedio !== null
-      ? `${data.porcentaje_mujeres_promedio}% mujeres (n=${data.empresas_con_dato_mujeres})`
-      : 'Sin dato diversidad';
-  byId('pillars-view').innerHTML = `<div class="bar-list">${
-    items
-      .map(
-        (item) =>
-          `<div class="bar-row"><span>${item.nombre}</span><div class="track"><div class="fill teal" style="width:${item.porcentaje}%"></div></div><b>${item.empresas} <small>(${item.porcentaje}%)</small></b></div>`
-      )
-      .join('') || '<p>Sin datos de pilares.</p>'
-  }</div>`;
-}
-
-function renderKams(items) {
-  byId('kams-total').textContent = `${items.length} ejecutivas`;
-  byId('kams-body').innerHTML =
-    items
-      .map(
-        (item) =>
-          `<tr><td>${item.kam_id}</td><td>${item.responsable_nombre || '—'}</td><td>${item.afiliados_activos}</td><td>${item.vencen_90d}</td><td>${item.empresas_con_asistencia}</td><td>${item.porcentaje_en_servicios}%</td><td>${item.asistencias_totales}</td><td>${item.renovaciones}</td></tr>`
-      )
-      .join('') || '<tr><td colspan="8">Sin datos por ejecutiva.</td></tr>';
-}
-
-function renderDimensions(data) {
-  const rows = data.por_modalidad || [];
-  byId('topics-count').textContent = `${data.total_con_temarios} temarios`;
-  byId('dimensions-view').innerHTML = `<div class="table-wrap"><table><thead><tr><th>Modalidad</th><th>Resp.</th><th>Loc./Plat.</th><th>Convoc.</th><th>Confer.</th><th>Temas</th></tr></thead><tbody>${
-    rows
-      .map(
-        (item) =>
-          `<tr><td>${item.modalidad}</td><td>${item.respuestas}</td><td>${item.locacion_plataforma}</td><td>${item.convocatoria_publicidad}</td><td>${item.conferencistas}</td><td>${item.relevancia_temas}</td></tr>`
-      )
-      .join('') || '<tr><td colspan="6">Sin encuestas para este periodo.</td></tr>'
-  }</tbody></table></div>`;
-  const topics = data.temarios_recientes || [];
-  byId('topics-list').innerHTML =
-    topics
-      .slice(0, 6)
-      .map(
-        (item) =>
-          `<li>${item.temario}<small>${item.modalidad || 'Encuesta'} · ${item.fecha || 'Sin fecha'}</small></li>`
-      )
-      .join('') || '<li>Sin temarios sugeridos en este periodo.</li>';
-}
-
-function renderPortfolio(data) {
-  byId('portfolio-total').textContent = `${data.total} empresas`;
-  byId('portfolio-body').innerHTML =
-    data.items
-      .map(
-        (item) =>
-          `<tr><td>${item.id_empresa}</td><td>${item.kam_nombre || item.kam_id || '—'}</td><td>${item.nivel_membresia || '—'}</td><td>${item.sector_economico || '—'}</td><td>${item.tamano_empresa || '—'}</td><td>${item.estado_membresia || '—'}</td><td>${item.ciudad || '—'}</td><td>${item.fecha_miembro_desde || '—'}</td><td>${item.fecha_expiracion || '—'}</td></tr>`
-      )
-      .join('') || '<tr><td colspan="9">Sin resultados para estos filtros.</td></tr>';
-}
-
-function renderSatisfaction(items) {
-  byId('satisfaction-body').innerHTML =
-    items
-      .map(
-        (item) =>
-          `<tr><td>${item.periodo_mes || 'Sin periodo'}</td><td>${item.respuestas}</td><td>${item.promedio_satisfaccion}</td><td>${item.nps_adaptado_1_5}</td></tr>`
-      )
-      .join('') || '<tr><td colspan="4">Sin encuestas para este periodo.</td></tr>';
-}
-
-function renderInsights(participation, satisfaction) {
+function renderTrendAreaChart(participation, satisfaction) {
   const target = byId('insight-view');
   const description = byId('insight-description');
+
   if (state.insight === 'nps') {
     const total = satisfaction.reduce((sum, item) => sum + item.respuestas, 0);
     const promoters = satisfaction.reduce((sum, item) => sum + (item.promotores || 0), 0);
@@ -198,12 +76,15 @@ function renderInsights(participation, satisfaction) {
     const neutral = Math.max(total - promoters - detractors, 0);
     const nps = total ? Math.round(((promoters - detractors) / total) * 100) : 0;
     description.textContent =
-      'Composición NPS adaptado: 4–5 promotor, 3 neutro y 1–2 detractor. Una respuesta de 3 no cambia el NPS neto.';
+      'Composición NPS adaptado (4–5 promotor, 3 neutro, 1–2 detractor).';
     target.innerHTML = total
-      ? `<div class="nps-summary"><strong>${nps}</strong><span>NPS adaptado</span></div><div class="stacked"><i class="promoter" style="width:${(promoters / total) * 100}%"></i><i class="neutral" style="width:${(neutral / total) * 100}%"></i><i class="detractor" style="width:${(detractors / total) * 100}%"></i></div><div class="nps-legend"><span><i class="promoter"></i>Promotores ${promoters}</span><span><i class="neutral"></i>Neutros ${neutral}</span><span><i class="detractor"></i>Detractores ${detractors}</span></div>`
+      ? `<div class="nps-summary"><strong>${nps}</strong><span>NPS adaptado (${total} respuestas)</span></div>
+         <div class="stacked"><i class="promoter" style="width:${(promoters / total) * 100}%"></i><i class="neutral" style="width:${(neutral / total) * 100}%"></i><i class="detractor" style="width:${(detractors / total) * 100}%"></i></div>
+         <div class="nps-legend"><span><i class="promoter"></i>Promotores ${promoters} (${Math.round((promoters / total) * 100)}%)</span><span><i class="neutral"></i>Neutros ${neutral}</span><span><i class="detractor"></i>Detractores ${detractors}</span></div>`
       : '<p>Sin encuestas para estos filtros.</p>';
     return;
   }
+
   const periods = [
     ...new Set(
       [
@@ -212,48 +93,446 @@ function renderInsights(participation, satisfaction) {
       ].filter(Boolean)
     ),
   ].sort();
-  const values = periods.map((period) =>
+
+  const attValues = periods.map((p) =>
     participation
-      .filter((item) => item.fecha_evento?.startsWith(period))
+      .filter((item) => item.fecha_evento?.startsWith(p))
       .reduce((sum, item) => sum + item.asistencias, 0)
   );
-  const maximum = Math.max(...values, 1);
-  description.textContent = 'Tendencia mensual de asistencias y promedio de satisfacción en Silver.';
-  target.innerHTML = periods.length
-    ? `<div class="trend-list">${periods
-        .map(
-          (period, index) =>
-            `<div><span>${period}</span><div class="track"><i class="fill" style="width:${(values[index] / maximum) * 100}%"></i></div><b>${values[index]}</b></div>`
-        )
-        .join('')}</div><p class="chart-note">Satisfacción: ${periods
-        .map((period) => {
-          const records = satisfaction.filter((item) => item.periodo_mes === period);
-          const value = records.length
-            ? records.reduce((sum, item) => sum + item.promedio_satisfaccion, 0) / records.length
-            : null;
-          return `${period} ${value === null ? 'sin respuesta' : value.toFixed(2)}`;
+  const satValues = periods.map((p) => {
+    const recs = satisfaction.filter((item) => item.periodo_mes === p);
+    return recs.length
+      ? recs.reduce((s, r) => s + r.promedio_satisfaccion, 0) / recs.length
+      : null;
+  });
+
+  description.textContent =
+    'Área violeta: asistencias por mes · Línea naranja: satisfacción promedio (1–5).';
+
+  if (!periods.length) {
+    target.innerHTML = '<p>Sin periodos para mostrar.</p>';
+    return;
+  }
+
+  const w = 560;
+  const h = 210;
+  const pad = { l: 38, r: 34, t: 18, b: 30 };
+  const plotW = w - pad.l - pad.r;
+  const plotH = h - pad.t - pad.b;
+  const maxAtt = Math.max(...attValues, 1);
+  const stepX = periods.length > 1 ? plotW / (periods.length - 1) : 0;
+
+  const pts = attValues.map((val, i) => ({
+    x: pad.l + (periods.length > 1 ? i * stepX : plotW / 2),
+    y: pad.t + plotH - (val / maxAtt) * plotH,
+    val,
+    label: periods[i].slice(2),
+  }));
+
+  const linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const areaPath = `${linePath} L${pts[pts.length - 1].x.toFixed(1)},${(pad.t + plotH).toFixed(1)} L${pts[0].x.toFixed(1)},${(pad.t + plotH).toFixed(1)} Z`;
+
+  const satPts = satValues
+    .map((val, i) =>
+      val === null
+        ? null
+        : {
+            x: pts[i].x,
+            y: pad.t + plotH - (Math.max(0, Math.min(5, val)) / 5) * plotH,
+            val,
+            label: periods[i],
+          }
+    )
+    .filter(Boolean);
+  const satPath = satPts
+    .map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`)
+    .join(' ');
+
+  const gridLines = [0, 0.5, 1]
+    .map((ratio) => {
+      const y = pad.t + plotH - ratio * plotH;
+      const lbl = Math.round(maxAtt * ratio);
+      return `<line x1="${pad.l}" y1="${y}" x2="${w - pad.r}" y2="${y}" stroke="var(--line)" stroke-dasharray="3 3"/>
+              <text x="${pad.l - 6}" y="${y + 3}" text-anchor="end" font-size="9" fill="var(--sub)">${lbl}</text>`;
+    })
+    .join('');
+
+  target.innerHTML = `<svg class="svg-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="Tendencia mensual de asistencias y satisfacción">
+    <defs>
+      <linearGradient id="attGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#5000bf" stop-opacity="0.32"/>
+        <stop offset="100%" stop-color="#5000bf" stop-opacity="0.02"/>
+      </linearGradient>
+    </defs>
+    ${gridLines}
+    <path d="${areaPath}" fill="url(#attGrad)"/>
+    <path d="${linePath}" fill="none" stroke="var(--violet)" stroke-width="2.4" stroke-linejoin="round"/>
+    ${satPath ? `<path d="${satPath}" fill="none" stroke="var(--orange)" stroke-width="2" stroke-dasharray="4 3"/>` : ''}
+    ${pts
+      .map(
+        (p) =>
+          `<circle cx="${p.x}" cy="${p.y}" r="3.5" fill="var(--violet)"><title>${p.label}: ${p.val} asistencias</title></circle>
+           <text x="${p.x}" y="${h - 10}" text-anchor="middle" font-size="9" fill="var(--sub)">${p.label}</text>`
+      )
+      .join('')}
+    ${satPts
+      .map(
+        (p) =>
+          `<circle cx="${p.x}" cy="${p.y}" r="3" fill="var(--orange)"><title>${p.label}: satisfacción ${p.val.toFixed(2)}</title></circle>`
+      )
+      .join('')}
+  </svg>`;
+}
+
+function renderOverviewLines(audience) {
+  const lines = audience.lineas_oferta || [];
+  const total = lines.reduce((s, item) => s + item.asistencias, 0);
+  const leads = lines.reduce((s, item) => s + item.no_afiliados, 0);
+  const max = Math.max(...lines.map((i) => i.asistencias), 1);
+  byId('leads-ratio-tag').textContent = total
+    ? `${Math.round((leads / total) * 100)}% leads`
+    : '0% leads';
+  byId('overview-lines-view').innerHTML = `<div class="bar-list">${
+    lines
+      .map((item) => {
+        const afPct = (item.afiliados / max) * 100;
+        const noAfPct = (item.no_afiliados / max) * 100;
+        return `<div class="bar-row"><span>${escapeHtml(item.linea_oferta)}</span>
+          <div class="track stacked-track">
+            <div class="fill" style="width:${afPct}%" title="Afiliados: ${item.afiliados}"></div>
+            <div class="fill lead" style="width:${noAfPct}%" title="Leads: ${item.no_afiliados}"></div>
+          </div>
+          <b>${item.asistencias}</b></div>`;
+      })
+      .join('') || '<p>Sin datos por línea.</p>'
+  }</div><div class="nps-legend"><span><i style="background:var(--violet)"></i>Afiliados (${total - leads})</span><span><i style="background:var(--orange)"></i>No afiliados / Leads (${leads})</span></div>`;
+}
+
+function renderKamColumnChart(items, targetId) {
+  const top = items.filter((k) => k.afiliados_activos > 0).slice(0, 8);
+  if (!top.length) {
+    byId(targetId).innerHTML = '<p>Sin datos por ejecutiva.</p>';
+    return;
+  }
+  const w = 520;
+  const h = 205;
+  const pad = { l: 34, r: 12, t: 16, b: 36 };
+  const plotW = w - pad.l - pad.r;
+  const plotH = h - pad.t - pad.b;
+  const maxVal = Math.max(...top.map((k) => k.afiliados_activos), 1);
+  const groupW = plotW / top.length;
+  const barW = Math.min(16, (groupW - 10) / 3);
+
+  const grid = [0, 0.5, 1]
+    .map((r) => {
+      const y = pad.t + plotH - r * plotH;
+      return `<line x1="${pad.l}" y1="${y}" x2="${w - pad.r}" y2="${y}" stroke="var(--line)" stroke-dasharray="3 3"/>
+              <text x="${pad.l - 5}" y="${y + 3}" text-anchor="end" font-size="9" fill="var(--sub)">${Math.round(maxVal * r)}</text>`;
+    })
+    .join('');
+
+  const bars = top
+    .map((k, i) => {
+      const gx = pad.l + i * groupW + (groupW - barW * 3 - 4) / 2;
+      const hAct = (k.afiliados_activos / maxVal) * plotH;
+      const hSrv = (k.empresas_con_asistencia / maxVal) * plotH;
+      const hVen = (k.vencen_90d / maxVal) * plotH;
+      const lbl = k.responsable_nombre && k.responsable_nombre !== 'Sin asignar' ? k.responsable_nombre : k.kam_id.replace('KAM-', '');
+      return `<rect x="${gx}" y="${pad.t + plotH - hAct}" width="${barW}" height="${hAct}" rx="3" fill="var(--violet)"><title>${lbl}: ${k.afiliados_activos} activos</title></rect>
+              <rect x="${gx + barW + 2}" y="${pad.t + plotH - hSrv}" width="${barW}" height="${hSrv}" rx="3" fill="var(--teal)"><title>${lbl}: ${k.empresas_con_asistencia} con asistencia (${k.porcentaje_en_servicios}%)</title></rect>
+              <rect x="${gx + (barW + 2) * 2}" y="${pad.t + plotH - hVen}" width="${barW}" height="${hVen}" rx="3" fill="var(--orange)"><title>${lbl}: ${k.vencen_90d} vencen en 90d</title></rect>
+              <text x="${gx + barW * 1.5 + 2}" y="${h - 14}" text-anchor="middle" font-size="9" fill="var(--sub)">${escapeHtml(lbl.slice(0, 9))}</text>`;
+    })
+    .join('');
+
+  byId(targetId).innerHTML = `<svg class="svg-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="Comparativa por ejecutiva KAM">${grid}${bars}</svg>
+    <div class="nps-legend"><span><i style="background:var(--violet)"></i>Activos</span><span><i style="background:var(--teal)"></i>Con asistencia</span><span><i style="background:var(--orange)"></i>Vencen 90d</span></div>`;
+}
+
+function renderParticipation(items) {
+  if (state.chart === 'bars') {
+    const top = [...items].sort((a, b) => b.asistencias - a.asistencias).slice(0, 10);
+    const max = Math.max(...top.map((item) => item.asistencias), 1);
+    byId('participation-view').innerHTML = `<div class="bar-list">${
+      top
+        .map((item) => {
+          const af = item.asistentes_afiliados ?? item.asistencias;
+          const noAf = item.asistentes_no_afiliados ?? 0;
+          return `<div class="bar-row"><span title="${escapeHtml(item.nombre_evento)}">${escapeHtml(item.nombre_evento || 'Sin nombre')}</span>
+            <div class="track stacked-track">
+              <div class="fill" style="width:${(af / max) * 100}%" title="Afiliados: ${af}"></div>
+              <div class="fill lead" style="width:${(noAf / max) * 100}%" title="Leads: ${noAf}"></div>
+            </div>
+            <b>${item.asistencias}</b></div>`;
         })
-        .join(' · ')}</p>`
-    : '<p>Sin periodos para mostrar.</p>';
+        .join('') || '<p>Sin asistencias para estos filtros.</p>'
+    }</div><div class="nps-legend"><span><i style="background:var(--violet)"></i>Afiliados</span><span><i style="background:var(--orange)"></i>Leads (No afiliados)</span></div>`;
+    return;
+  }
+
+  if (state.chart === 'donut') {
+    const top = [...items].sort((a, b) => b.asistencias - a.asistencias).slice(0, 7);
+    const total = top.reduce((sum, item) => sum + item.asistencias, 0);
+    const colors = ['#5000bf', '#ff5a00', '#2ea6a2', '#9f7aea', '#2b6cb0', '#d69e2e', '#e53e3e'];
+    let offset = 0;
+    const slices = top
+      .map((item, idx) => {
+        const share = total ? item.asistencias / total : 0;
+        const circle = `<circle cx="50" cy="50" r="38" pathLength="100" stroke="${colors[idx % colors.length]}" stroke-dasharray="${share * 100} ${100 - share * 100}" stroke-dashoffset="${-offset}"><title>${escapeHtml(item.nombre_evento)}: ${item.asistencias}</title></circle>`;
+        offset += share * 100;
+        return circle;
+      })
+      .join('');
+    byId('participation-view').innerHTML = total
+      ? `<div class="donut-layout"><svg class="donut" viewBox="0 0 100 100" role="img" aria-label="Distribución de asistencias"><circle class="donut-base" cx="50" cy="50" r="38"/>${slices}<text x="50" y="48">${total}</text><text x="50" y="59">top 7</text></svg>
+         <ul class="legend">${top
+           .map(
+             (item, idx) =>
+               `<li><i style="background:${colors[idx % colors.length]}"></i><span title="${escapeHtml(item.nombre_evento)}">${escapeHtml(item.nombre_evento || 'Evento')}</span><b>${item.asistencias}</b></li>`
+           )
+           .join('')}</ul></div>`
+      : '<p>Sin asistencias para estos filtros.</p>';
+    return;
+  }
+
+  byId('participation-view').innerHTML = `<div class="table-wrap bounded"><table><thead><tr><th>Evento</th><th>Línea</th><th>Total</th><th>Afiliados</th><th>Leads</th><th>Empresas</th></tr></thead><tbody>${
+    items
+      .map(
+        (item) =>
+          `<tr><td>${escapeHtml(item.nombre_evento || '—')}</td><td>${escapeHtml(item.linea_oferta || '—')}</td><td>${item.asistencias}</td><td>${item.asistentes_afiliados ?? '—'}</td><td>${item.asistentes_no_afiliados ?? '—'}</td><td>${item.empresas_distintas}</td></tr>`
+      )
+      .join('') || '<tr><td colspan="6">Sin asistencias para estos filtros.</td></tr>'
+  }</tbody></table></div>`;
+}
+
+function renderAudience(data) {
+  const target = byId('audience-view');
+  const desc = byId('audience-description');
+
+  if (state.audience === 'roles') {
+    const items = (data.niveles_cargo || []).slice(0, 7);
+    const total = items.reduce((s, i) => s + i.asistencias, 0);
+    const colors = ['#5000bf', '#2ea6a2', '#ff5a00', '#9f7aea', '#2b6cb0', '#d69e2e', '#718096'];
+    let offset = 0;
+    const slices = items
+      .map((item, idx) => {
+        const share = total ? item.asistencias / total : 0;
+        const c = `<circle cx="50" cy="50" r="38" pathLength="100" stroke="${colors[idx % colors.length]}" stroke-dasharray="${share * 100} ${100 - share * 100}" stroke-dashoffset="${-offset}"><title>${escapeHtml(item.nivel_cargo)}: ${item.asistencias}</title></circle>`;
+        offset += share * 100;
+        return c;
+      })
+      .join('');
+    desc.textContent = 'Distribución jerárquica de los participantes en eventos Silver.';
+    target.innerHTML = total
+      ? `<div class="donut-layout"><svg class="donut" viewBox="0 0 100 100" role="img" aria-label="Cargos"><circle class="donut-base" cx="50" cy="50" r="38"/>${slices}<text x="50" y="48">${total}</text><text x="50" y="59">cargos</text></svg>
+         <ul class="legend">${items
+           .map(
+             (item, idx) =>
+               `<li><i style="background:${colors[idx % colors.length]}"></i><span>${escapeHtml(item.nivel_cargo)}</span><b>${item.asistencias}</b></li>`
+           )
+           .join('')}</ul></div>`
+      : '<p>Sin datos de audiencia.</p>';
+    return;
+  }
+
+  const items = state.audience === 'lines' ? data.lineas_oferta || [] : data.modalidades || [];
+  const labelKey = state.audience === 'lines' ? 'linea_oferta' : 'modalidad';
+  const max = Math.max(...items.map((item) => item.asistencias), 1);
+  desc.textContent =
+    state.audience === 'lines'
+      ? 'Afiliados (violeta) vs. Leads (naranja) por línea 2027.'
+      : 'Afiliados (violeta) vs. Leads (naranja) por modalidad.';
+  target.innerHTML = `<div class="bar-list">${
+    items
+      .map((item) => {
+        const afPct = (item.afiliados / max) * 100;
+        const noAfPct = (item.no_afiliados / max) * 100;
+        return `<div class="bar-row"><span>${escapeHtml(item[labelKey])}</span>
+          <div class="track stacked-track">
+            <div class="fill" style="width:${afPct}%" title="Afiliados: ${item.afiliados}"></div>
+            <div class="fill lead" style="width:${noAfPct}%" title="Leads: ${item.no_afiliados}"></div>
+          </div><b>${item.asistencias}</b></div>`;
+      })
+      .join('') || '<p>Sin datos.</p>'
+  }</div>`;
+}
+
+function renderPillars(data) {
+  const items = data.pilares || [];
+  byId('pillars-description').textContent = `Adopción sobre ${data.total_activos} afiliados activos.`;
+  const pctMuj = data.porcentaje_mujeres_promedio;
+  byId('women-share').textContent =
+    pctMuj !== null ? `${pctMuj}% mujeres (n=${data.empresas_con_dato_mujeres})` : 'Sin dato diversidad';
+
+  const gaugeVal = pctMuj ?? 0;
+  const gaugeSvg = `<div class="gauge-box">
+    <svg class="donut" style="width:94px" viewBox="0 0 100 100" role="img" aria-label="Participación femenina">
+      <circle class="donut-base" cx="50" cy="50" r="38"/>
+      <circle cx="50" cy="50" r="38" pathLength="100" stroke="var(--orange)" stroke-dasharray="${gaugeVal} ${100 - gaugeVal}"/>
+      <text x="50" y="53">${pctMuj !== null ? `${pctMuj}%` : '—'}</text>
+    </svg>
+    <small>Mujeres promedio</small>
+  </div>`;
+
+  const bars = `<div class="bar-list">${items
+    .map(
+      (item) =>
+        `<div class="bar-row"><span>${escapeHtml(item.nombre)}</span><div class="track"><div class="fill teal" style="width:${item.porcentaje}%"></div></div><b>${item.empresas} <small>(${item.porcentaje}%)</small></b></div>`
+    )
+    .join('')}</div>`;
+
+  byId('pillars-view').innerHTML = `<div class="pillars-wrap">${gaugeSvg}${bars}</div>`;
+}
+
+function renderKamsSection(items) {
+  renderKamColumnChart(items, 'overview-kams-chart');
+  if (state.kamView === 'chart') {
+    renderKamColumnChart(items, 'kams-view');
+    return;
+  }
+  byId('kams-view').innerHTML = `<div class="table-wrap bounded"><table><thead><tr><th>KAM</th><th>Ejecutiva</th><th>Activos</th><th>Vencen 90d</th><th>Con asist.</th><th>% Serv.</th><th>Asist.</th><th>Renov.</th></tr></thead><tbody>${
+    items
+      .map(
+        (item) =>
+          `<tr><td>${escapeHtml(item.kam_id)}</td><td>${escapeHtml(item.responsable_nombre || '—')}</td><td>${item.afiliados_activos}</td><td>${item.vencen_90d}</td><td>${item.empresas_con_asistencia}</td><td>${item.porcentaje_en_servicios}%</td><td>${item.asistencias_totales}</td><td>${item.renovaciones}</td></tr>`
+      )
+      .join('') || '<tr><td colspan="8">Sin datos.</td></tr>'
+  }</tbody></table></div>`;
+}
+
+function renderDimensionsRadar(data) {
+  const rows = data.por_modalidad || [];
+  byId('topics-count').textContent = `${data.total_con_temarios} temarios`;
+
+  const axes = [
+    { key: 'locacion_plataforma', label: 'Locación / Plat.' },
+    { key: 'convocatoria_publicidad', label: 'Convocatoria' },
+    { key: 'conferencistas', label: 'Conferencistas' },
+    { key: 'relevancia_temas', label: 'Relevancia' },
+  ];
+  const cx = 140;
+  const cy = 105;
+  const rMax = 72;
+  const angles = axes.map((_, i) => -Math.PI / 2 + (i * 2 * Math.PI) / axes.length);
+
+  const rings = [1, 2, 3, 4, 5]
+    .map((lvl) => {
+      const r = (lvl / 5) * rMax;
+      const pts = angles.map((a) => `${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)}`).join(' ');
+      return `<polygon points="${pts}" fill="none" stroke="var(--line)" stroke-width="1"/>`;
+    })
+    .join('');
+
+  const spokes = angles
+    .map((a, i) => {
+      const x2 = cx + rMax * Math.cos(a);
+      const y2 = cy + rMax * Math.sin(a);
+      const lx = cx + (rMax + 22) * Math.cos(a);
+      const ly = cy + (rMax + 14) * Math.sin(a);
+      return `<line x1="${cx}" y1="${cy}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="var(--line)"/>
+              <text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" font-size="9.5" fill="var(--sub)">${axes[i].label}</text>`;
+    })
+    .join('');
+
+  const palette = { Presencial: '#5000bf', Virtual: '#ff5a00' };
+  const polygons = rows
+    .map((row, idx) => {
+      const color = palette[row.modalidad] || (idx === 0 ? '#5000bf' : '#2ea6a2');
+      const pts = axes
+        .map((ax, i) => {
+          const val = Math.max(0, Math.min(5, Number(row[ax.key] || 0)));
+          const r = (val / 5) * rMax;
+          return `${(cx + r * Math.cos(angles[i])).toFixed(1)},${(cy + r * Math.sin(angles[i])).toFixed(1)}`;
+        })
+        .join(' ');
+      return `<polygon points="${pts}" fill="${color}" fill-opacity="0.16" stroke="${color}" stroke-width="2"><title>${escapeHtml(row.modalidad)}: promedio ${row.promedio_general}</title></polygon>`;
+    })
+    .join('');
+
+  byId('dimensions-radar').innerHTML = rows.length
+    ? `<svg class="svg-chart" style="max-height:210px" viewBox="0 0 280 210" role="img" aria-label="Radar de dimensiones de satisfacción">${rings}${spokes}${polygons}</svg>
+       <div class="nps-legend">${rows
+         .map((r, i) => `<span><i style="background:${palette[r.modalidad] || (i === 0 ? '#5000bf' : '#2ea6a2')}"></i>${escapeHtml(r.modalidad)} (${r.promedio_general})</span>`)
+         .join('')}</div>`
+    : '<p>Sin encuestas para este periodo.</p>';
+
+  byId('dimensions-table').innerHTML = `<div class="table-wrap"><table><thead><tr><th>Modalidad</th><th>Resp.</th><th>Loc./Plat.</th><th>Convoc.</th><th>Confer.</th><th>Temas</th></tr></thead><tbody>${
+    rows
+      .map(
+        (item) =>
+          `<tr><td>${escapeHtml(item.modalidad)}</td><td>${item.respuestas}</td><td>${item.locacion_plataforma}</td><td>${item.convocatoria_publicidad}</td><td>${item.conferencistas}</td><td>${item.relevancia_temas}</td></tr>`
+      )
+      .join('') || '<tr><td colspan="6">Sin datos.</td></tr>'
+  }</tbody></table></div>`;
+
+  const topics = data.temarios_recientes || [];
+  byId('topics-list').innerHTML =
+    topics
+      .map(
+        (item) =>
+          `<li>${escapeHtml(item.temario)}<small>${escapeHtml(item.modalidad || 'Encuesta')} · ${escapeHtml(item.fecha || 'Sin fecha')}</small></li>`
+      )
+      .join('') || '<li>Sin temarios sugeridos en este periodo.</li>';
+}
+
+function renderPortfolioRows(items) {
+  const term = (byId('portfolio-search')?.value || '').trim().toLowerCase();
+  const filtered = term
+    ? items.filter((item) =>
+        [item.id_empresa, item.kam_nombre, item.kam_id, item.sector_economico, item.ciudad, item.nivel_membresia]
+          .filter(Boolean)
+          .some((val) => String(val).toLowerCase().includes(term))
+      )
+    : items;
+  byId('portfolio-body').innerHTML =
+    filtered
+      .map(
+        (item) =>
+          `<tr><td>${escapeHtml(item.id_empresa)}</td><td>${escapeHtml(item.kam_nombre || item.kam_id || '—')}</td><td>${escapeHtml(item.nivel_membresia || '—')}</td><td>${escapeHtml(item.sector_economico || '—')}</td><td>${escapeHtml(item.tamano_empresa || '—')}</td><td>${escapeHtml(item.estado_membresia || '—')}</td><td>${escapeHtml(item.ciudad || '—')}</td><td>${escapeHtml(item.fecha_miembro_desde || '—')}</td><td>${escapeHtml(item.fecha_expiracion || '—')}</td></tr>`
+      )
+      .join('') || '<tr><td colspan="9">Sin resultados para estos filtros.</td></tr>';
+}
+
+function renderPortfolio(data) {
+  state.portfolioItems = data.items || [];
+  byId('portfolio-total').textContent = `${data.total} empresas`;
+  renderPortfolioRows(state.portfolioItems);
+}
+
+function renderSatisfaction(items) {
+  byId('satisfaction-body').innerHTML =
+    items
+      .map(
+        (item) =>
+          `<tr><td>${escapeHtml(item.periodo_mes || 'Sin periodo')}</td><td>${item.respuestas}</td><td>${item.promedio_satisfaccion}</td><td>${item.nps_adaptado_1_5}</td></tr>`
+      )
+      .join('') || '<tr><td colspan="4">Sin encuestas para este periodo.</td></tr>';
 }
 
 function renderSegments(data) {
   const rows = [
     ...data.vencimientos_proximos.slice(0, 2).map(
-      (row) => `Contactar ${row.id_empresa}<small>Vence ${row.fecha_expiracion} · ${row.kam_id}</small>`
+      (row) => `Contactar ${escapeHtml(row.id_empresa)}<small>Vence ${escapeHtml(row.fecha_expiracion)} · ${escapeHtml(row.kam_id)}</small>`
     ),
     ...data.afiliados_sin_participacion.slice(0, 2).map(
-      (row) => `Activar ${row.id_empresa}<small>Sin participación · ${row.kam_id}</small>`
+      (row) => `Activar ${escapeHtml(row.id_empresa)}<small>Sin participación · ${escapeHtml(row.kam_id)}</small>`
     ),
     ...data.asistentes_no_afiliados.slice(0, 2).map(
-      (row) => `Convertir asistente ${row.id_persona}<small>Evento ${row.id_evento}</small>`
+      (row) => `Convertir lead ${escapeHtml(row.id_persona)}<small>Evento #${escapeHtml(row.id_evento)}</small>`
     ),
   ];
   byId('segments-list').innerHTML =
     rows.map((row) => `<li>${row}</li>`).join('') || '<li>Sin acciones pendientes.</li>';
 }
 
+function updateActiveFiltersBadge() {
+  const selects = [...document.querySelectorAll('.filters select')];
+  const count = selects.filter((el) => el.value).length;
+  byId('active-filters-badge').textContent = count ? `${count} activos` : 'Sin filtros';
+}
+
 async function refresh() {
+  updateActiveFiltersBadge();
   const period = byId('period-filter').value;
   const kam = byId('kam-filter').value;
   const level = byId('level-filter').value;
@@ -265,7 +544,8 @@ async function refresh() {
   const line = byId('line-filter').value;
   const modality = byId('modality-filter').value;
   const dates = periodBounds(period);
-  byId('filter-status').textContent = 'Actualizando indicadores…';
+  byId('filter-status').textContent = 'Actualizando…';
+
   try {
     const [
       portfolio,
@@ -318,33 +598,30 @@ async function refresh() {
       request(endpoints.dimensions + query(dates)),
       request(endpoints.segments),
     ]);
+
     renderPortfolio(portfolio);
     renderParticipation(participation);
     renderAudience(audience);
+    renderOverviewLines(audience);
     renderPillars(pillars);
-    renderKams(kams);
+    renderKamsSection(kams);
     renderSatisfaction(satisfaction);
-    renderDimensions(dimensions);
-    renderInsights(participation, satisfaction);
+    renderDimensionsRadar(dimensions);
+    renderTrendAreaChart(participation, satisfaction);
     renderSegments(segments);
+
     byId('renewal-count').textContent = renewals.reduce((sum, item) => sum + item.renovaciones, 0);
     const totalAtt = participation.reduce((sum, item) => sum + item.asistencias, 0);
-    const leadsAtt = participation.reduce(
-      (sum, item) => sum + (item.asistentes_no_afiliados || 0),
-      0
-    );
+    const leadsAtt = participation.reduce((sum, item) => sum + (item.asistentes_no_afiliados || 0), 0);
     byId('attendance-count').textContent = totalAtt;
     byId('attendance-detail').textContent = `${totalAtt - leadsAtt} afiliados · ${leadsAtt} leads`;
     const activeSatisfaction = satisfaction.length
-      ? satisfaction.reduce((sum, item) => sum + item.promedio_satisfaccion, 0) /
-        satisfaction.length
+      ? satisfaction.reduce((sum, item) => sum + item.promedio_satisfaccion, 0) / satisfaction.length
       : 0;
     byId('satisfaction-score').textContent = activeSatisfaction.toFixed(2);
-    byId('filter-status').textContent = `Filtros aplicados: ${period || 'todos los periodos'} · ${
-      kam || 'todas las KAM'
-    } · ${line || 'todas las líneas'}.`;
+    byId('filter-status').textContent = 'Actualizado';
   } catch (error) {
-    byId('filter-status').textContent = 'No fue posible actualizar algunos indicadores.';
+    byId('filter-status').textContent = 'Error al actualizar indicadores.';
   }
 }
 
@@ -360,6 +637,7 @@ async function initialize() {
     byId('service-rate').textContent = `${overview.porcentaje_afiliados_en_servicios}%`;
     byId('service-detail').textContent = `${overview.empresas_con_servicio} de ${overview.afiliados_activos} activos`;
     byId('expiring-count').textContent = overview.vencimientos_proximos['90'];
+
     appendOptions(byId('period-filter'), analyticsFilters.periodos_asistencia, (value) =>
       new Intl.DateTimeFormat('es-CO', {
         month: 'long',
@@ -382,45 +660,57 @@ async function initialize() {
   }
 }
 
-document
-  .querySelectorAll('.filters select')
-  .forEach((element) => element.addEventListener('change', refresh));
+document.querySelectorAll('[data-tab]').forEach((btn) =>
+  btn.addEventListener('click', () => setActiveTab(btn.dataset.tab))
+);
+document.querySelectorAll('[data-tab-target]').forEach((el) =>
+  el.addEventListener('click', (e) => {
+    e.preventDefault();
+    setActiveTab(el.dataset.tabTarget);
+  })
+);
+document.querySelectorAll('.filters select').forEach((el) => el.addEventListener('change', refresh));
 byId('clear-filters').addEventListener('click', () => {
-  document.querySelectorAll('.filters select').forEach((element) => {
-    element.value = '';
+  document.querySelectorAll('.filters select').forEach((el) => {
+    el.value = '';
   });
   refresh();
 });
-document.querySelectorAll('[data-chart]').forEach((button) =>
-  button.addEventListener('click', () => {
-    document
-      .querySelectorAll('[data-chart]')
-      .forEach((item) => item.classList.remove('is-active'));
-    button.classList.add('is-active');
-    state.chart = button.dataset.chart;
+byId('portfolio-search')?.addEventListener('input', () => renderPortfolioRows(state.portfolioItems));
+
+document.querySelectorAll('[data-chart]').forEach((btn) =>
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-chart]').forEach((b) => b.classList.remove('is-active'));
+    btn.classList.add('is-active');
+    state.chart = btn.dataset.chart;
     refresh();
   })
 );
-document.querySelectorAll('[data-audience]').forEach((button) =>
-  button.addEventListener('click', () => {
-    document
-      .querySelectorAll('[data-audience]')
-      .forEach((item) => item.classList.remove('is-active'));
-    button.classList.add('is-active');
-    state.audience = button.dataset.audience;
+document.querySelectorAll('[data-audience]').forEach((btn) =>
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-audience]').forEach((b) => b.classList.remove('is-active'));
+    btn.classList.add('is-active');
+    state.audience = btn.dataset.audience;
     refresh();
   })
 );
-document.querySelectorAll('[data-insight]').forEach((button) =>
-  button.addEventListener('click', () => {
-    document
-      .querySelectorAll('[data-insight]')
-      .forEach((item) => item.classList.remove('is-active'));
-    button.classList.add('is-active');
-    state.insight = button.dataset.insight;
+document.querySelectorAll('[data-insight]').forEach((btn) =>
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-insight]').forEach((b) => b.classList.remove('is-active'));
+    btn.classList.add('is-active');
+    state.insight = btn.dataset.insight;
     refresh();
   })
 );
+document.querySelectorAll('[data-kam-view]').forEach((btn) =>
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-kam-view]').forEach((b) => b.classList.remove('is-active'));
+    btn.classList.add('is-active');
+    state.kamView = btn.dataset.kamView;
+    refresh();
+  })
+);
+
 const storedTheme = localStorage.getItem('actho-theme');
 if (storedTheme === 'dark') {
   document.documentElement.dataset.theme = 'dark';
@@ -432,4 +722,5 @@ byId('theme-toggle').addEventListener('click', () => {
   localStorage.setItem('actho-theme', dark ? 'dark' : 'light');
   byId('theme-toggle').textContent = dark ? 'Modo claro' : 'Modo oscuro';
 });
+
 initialize();
