@@ -41,10 +41,13 @@ class DashboardSilverRepository:
             "kams": values(SilverDimEmpresa.kam_id),
             "niveles_membresia": values(SilverDimEmpresa.nivel_membresia),
             "sectores": values(SilverDimEmpresa.sector_economico),
+            "tamanos_empresa": values(SilverDimEmpresa.tamano_empresa),
+            "estados_membresia": values(SilverDimEmpresa.estado_membresia_detalle),
             "ciudades": values(SilverDimEmpresa.ciudad),
             "lineas_oferta": values(SilverDimEvento.linea_oferta_2027),
             "modalidades_evento": values(SilverDimEvento.modalidad),
             "periodos_asistencia": values(SilverFactAsistencia.periodo_mes_iso),
+            "ciudades_evento": values(SilverFactAsistencia.ciudad_evento),
         }
 
     def obtener_resumen(self, fecha_referencia: date) -> dict[str, Any]:
@@ -109,6 +112,8 @@ class DashboardSilverRepository:
         kam_id: str | None,
         nivel_membresia: str | None,
         sector: str | None,
+        tamano_empresa: str | None,
+        estado_membresia: str | None,
         ciudad: str | None,
         solo_activos: bool,
         offset: int,
@@ -124,6 +129,12 @@ class DashboardSilverRepository:
             query = query.filter(SilverDimEmpresa.nivel_membresia == nivel_membresia)
         if sector:
             query = query.filter(SilverDimEmpresa.sector_economico == sector)
+        if tamano_empresa:
+            query = query.filter(SilverDimEmpresa.tamano_empresa == tamano_empresa)
+        if estado_membresia:
+            query = query.filter(
+                SilverDimEmpresa.estado_membresia_detalle == estado_membresia
+            )
         if ciudad:
             query = query.filter(SilverDimEmpresa.ciudad == ciudad)
         if solo_activos:
@@ -149,8 +160,10 @@ class DashboardSilverRepository:
                     "nivel_membresia": empresa.nivel_membresia,
                     "sector_economico": empresa.sector_economico,
                     "tamano_empresa": empresa.tamano_empresa,
+                    "estado_membresia": empresa.estado_membresia_detalle,
                     "ciudad": empresa.ciudad,
                     "fecha_afiliacion": empresa.fecha_afiliacion,
+                    "fecha_miembro_desde": empresa.fecha_miembro_desde,
                     "fecha_expiracion": empresa.fecha_expiracion,
                 }
                 for empresa, kam in rows
@@ -163,6 +176,7 @@ class DashboardSilverRepository:
         fecha_desde: str | None,
         fecha_hasta: str | None,
         kam_id: str | None,
+        ciudad_evento: str | None,
     ) -> list[dict[str, Any]]:
         """Agrupa participación por evento, línea y modalidad."""
         query = self.session.query(
@@ -188,6 +202,8 @@ class DashboardSilverRepository:
             query = query.filter(SilverFactAsistencia.fecha_evento <= fecha_hasta)
         if kam_id:
             query = query.filter(SilverFactAsistencia.kam_id == kam_id)
+        if ciudad_evento:
+            query = query.filter(SilverFactAsistencia.ciudad_evento == ciudad_evento)
         rows = (
             query.group_by(
                 SilverDimEvento.id_evento,

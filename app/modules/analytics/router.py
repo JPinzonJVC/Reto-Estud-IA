@@ -48,13 +48,18 @@ def get_silver_filters(db: Session = Depends(get_db)) -> dict[str, list[str]]:
         db: Sesión PostgreSQL inyectada mediante ``Depends(get_db)``.
 
     Returns:
-        Catálogos de línea de oferta, modalidad y periodo de asistencia.
+        Catálogos de línea de oferta, modalidad, periodo y ciudad de evento.
 
     """
     filters = DashboardSilverRepository(db).obtener_filtros()
     return {
         key: filters[key]
-        for key in ("lineas_oferta", "modalidades_evento", "periodos_asistencia")
+        for key in (
+            "lineas_oferta",
+            "modalidades_evento",
+            "periodos_asistencia",
+            "ciudades_evento",
+        )
     }
 
 
@@ -63,6 +68,7 @@ def get_silver_participation(
     fecha_desde: str | None = None,
     fecha_hasta: str | None = None,
     kam_id: str | None = None,
+    ciudad_evento: str | None = None,
     db: Session = Depends(get_db),
 ) -> list[dict[str, Any]]:
     """Retorna participación Silver por evento, línea y modalidad.
@@ -71,6 +77,7 @@ def get_silver_participation(
         fecha_desde: Fecha inicial ISO opcional de las asistencias.
         fecha_hasta: Fecha final ISO opcional de las asistencias.
         kam_id: Identificador opcional de la ejecutiva de cuenta.
+        ciudad_evento: Ciudad en la que ocurrió el evento opcional.
         db: Sesión PostgreSQL inyectada mediante ``Depends(get_db)``.
 
     Returns:
@@ -81,6 +88,7 @@ def get_silver_participation(
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
         kam_id=kam_id,
+        ciudad_evento=ciudad_evento,
     )
 
 
