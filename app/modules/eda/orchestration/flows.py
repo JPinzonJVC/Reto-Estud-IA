@@ -33,6 +33,7 @@ try:
     PREFECT_AVAILABLE = True
 except ImportError:  # pragma: no cover - fallback para entornos sin prefect instalado
     PREFECT_AVAILABLE = False
+    NO_CACHE = None
 
     def flow(*_args: Any, **_kwargs: Any) -> Callable[[_F], _F]:
         """Decorador fallback cuando prefect no está instalado.
@@ -274,18 +275,62 @@ def run_medallion_etl_task(*, engine: Engine) -> dict[str, Any]:
     return ejecutar_pipeline_completo(persistir_en_db=True, db_engine=engine)
 
 
+@task(
+    name="cleanup-staging-raw",
+    cache_policy=NO_CACHE,
+)
+def cleanup_staging_raw_task(*, files_to_delete: list[Path]) -> int:
+    """Elimina archivos temporales descargados en raw_drive/raw_zoho tras carga exitosa.
+
+    Args:
+        files_to_delete: Rutas de archivos temporales generados por Drive y Zoho.
+
+    Returns:
+        Cantidad total de archivos temporales eliminados.
+
+    Raises:
+        None.
+
+    """
+    deleted = 0
+    parent_dirs: set[Path] = set()
+    for path in files_to_delete:
+        if path.name == ".gitkeep":
+            continue
+        try:
+            if path.exists() and path.is_file():
+                path.unlink()
+                deleted += 1
+                parent_dirs.add(path.parent)
+        except OSError as exc:
+            logger.warning("No se pudo eliminar archivo temporal %s: %s", path, exc)
+
+    # Limpiar subcarpetas vacías creadas durante descargas recursivas
+    for directory in sorted(parent_dirs, key=lambda p: len(p.parts), reverse=True):
+        try:
+            if directory.exists() and not any(directory.iterdir()):
+                directory.rmdir()
+        except OSError:
+            continue
+
+    logger.info("Limpieza de staging temporal completada: %d archivo(s) eliminados.", deleted)
+    return deleted
+
+
 @flow(name="eda-medallion-weekly-pipeline", log_prints=True)
 def eda_medallion_flow(
     *,
     force_reprocess: bool | None = None,
+    cleanup_raw_after_load: bool | None = None,
     engine: Engine | None = None,
     drive_extractor: GoogleDriveExtractor | None = None,
     zoho_extractor: ZohoCRMExtractor | None = None,
 ) -> dict[str, Any]:
-    """Orquesta extracción (Drive + Zoho) y ejecución condicional del pipeline Medallion.
+    """Orquesta extracción (Drive + Zoho), Medallion ETL y limpieza de staging temporal.
 
     Args:
         force_reprocess: Sobreescribe EDA_FORCE_REPROCESS para forzar el ETL.
+        cleanup_raw_after_load: Sobreescribe EDA_CLEANUP_RAW_AFTER_LOAD para borrar temporales.
         engine: Motor SQLAlchemy opcional; si es None usa el singleton de app.database.
         drive_extractor: Extractor de Google Drive opcional para pruebas.
         zoho_extractor: Extractor de Zoho CRM opcional para pruebas.
@@ -300,6 +345,11 @@ def eda_medallion_flow(
     settings = OrchestrationEnvs()
     effective_force = (
         settings.force_reprocess if force_reprocess is None else force_reprocess
+    )
+    effective_cleanup = (
+        settings.cleanup_raw_after_load
+        if cleanup_raw_after_load is None
+        else cleanup_raw_after_load
     )
     db_engine = engine or get_engine()
 
@@ -327,15 +377,24 @@ def eda_medallion_flow(
             "drive": drive_result.model_dump(mode="json"),
             "zoho": zoho_result.model_dump(mode="json"),
             "pipeline_run_id": None,
+            "staging_cleaned_files": 0,
         }
 
     etl_result = run_medallion_etl_task(engine=db_engine)
+    pipeline_errors = etl_result.get("errores", [])
+    cleaned_files = 0
+    if effective_cleanup and not pipeline_errors:
+        staging_files = [*drive_result.files_written, *zoho_result.files_written]
+        if staging_files:
+            cleaned_files = cleanup_staging_raw_task(files_to_delete=staging_files)
+
     return {
         "status": "COMPLETED",
         "drive": drive_result.model_dump(mode="json"),
         "zoho": zoho_result.model_dump(mode="json"),
         "pipeline_run_id": etl_result.get("run_id"),
-        "pipeline_errors": etl_result.get("errores", []),
+        "pipeline_errors": pipeline_errors,
+        "staging_cleaned_files": cleaned_files,
     }
 
 

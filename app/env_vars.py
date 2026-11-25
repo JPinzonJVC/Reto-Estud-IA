@@ -172,6 +172,11 @@ class OrchestrationEnvs(BaseModel):
     )
     """Fuerza la ejecución del Medallion ETL aunque no haya cambios en fuentes (EDA_FORCE_REPROCESS)."""
 
+    cleanup_raw_after_load: bool = Field(
+        default_factory=lambda: _parse_bool_env("EDA_CLEANUP_RAW_AFTER_LOAD", True)
+    )
+    """Elimina archivos temporales en raw_drive y raw_zoho tras carga exitosa (EDA_CLEANUP_RAW_AFTER_LOAD)."""
+
     @field_validator("schedule_cron")
     @classmethod
     def _validate_cron_expression(cls, value: str) -> str:
