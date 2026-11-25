@@ -182,6 +182,12 @@ def _procesar_dim_empresas(
     )
     cols_disp = [c for c in COLS_DESCRIPTIVAS_EMPRESA if c in df_emp_silver.columns]
     df_emp_silver = df_emp_silver[cols_disp]
+    df_emp_silver = normalizar_dataframe_silver(
+        df_emp_silver,
+        cols_texto=("subsector_economico",),
+        cols_ciudad=("ciudad",),
+        cols_sector=("sector_economico",),
+    )
     df_emp_silver, rech = filtrar_registros_rechazados(
         df_emp_silver, "dim_empresas", ["id_empresa"], "dim_empresas.csv", bitacora
     )
@@ -289,6 +295,7 @@ def _procesar_dim_personas_y_eventos(
             "fecha_afiliacion_nueva": df_per_orig["fecha_afiliacion_nueva"],
         }
     )
+    df_per_silver = normalizar_dataframe_silver(df_per_silver, cols_ciudad=("ciudad",))
     df_per_silver, rech_per = filtrar_registros_rechazados(
         df_per_silver, "dim_personas", ["id_persona"], "dim_personas.csv", bitacora
     )
@@ -388,6 +395,9 @@ def _procesar_fact_asistencias(
         df_asist_silver["id_empresa"].notna() & df_asist_silver["id_persona"].notna(),
         "IDENTIDAD_COMPLETA",
         "PENDIENTE_RESOLUCION_EMPRESA",
+    )
+    df_asist_silver = normalizar_dataframe_silver(
+        df_asist_silver, cols_ciudad=("ciudad_evento",)
     )
     df_asist_silver, rech = filtrar_registros_rechazados(
         df_asist_silver,
@@ -577,6 +587,7 @@ def _procesar_encuestas_y_movimientos(
         [np.nan] * len(df_enc_silver), dtype="float64"
     )
     df_enc_silver["categoria_nps_0_10"] = "NO_DISPONIBLE_ESCALA_1_5"
+    df_enc_silver = normalizar_dataframe_silver(df_enc_silver, cols_ciudad=("ciudad",))
     df_enc_silver, rech_enc = filtrar_registros_rechazados(
         df_enc_silver,
         "fact_encuestas_satisfaccion",

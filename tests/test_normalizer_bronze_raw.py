@@ -10,8 +10,10 @@ from app.modules.eda.normalizer import (
     leer_y_normalizar_evento_raw,
     limpiar_texto_y_mojibake,
     normalizar_booleano,
+    normalizar_ciudad,
     normalizar_encabezado_snake_case,
     normalizar_fecha_iso,
+    normalizar_sector,
 )
 
 
@@ -39,6 +41,18 @@ def test_normalizar_booleanos_y_fechas_iso() -> None:
     assert normalizar_booleano("NO") is False
     assert normalizar_fecha_iso("mar. 20, 2025 09:21:35 a. m.") == "2025-03-20"
     assert normalizar_fecha_iso("2026-11-13") == "2026-11-13"
+
+
+def test_normalizar_ciudad_y_sector() -> None:
+    """Valida homologación canónica de ciudades y sectores económicos."""
+    for variante in ("BOGOTA", "BOGOTÁ D.C.", "Bogotá, D.C.", "Bigotá", "Bogots"):
+        assert normalizar_ciudad(variante) == "Bogotá"
+    for variante in ("MEDELLIN", "medellin", "Medellib", "Mediellín"):
+        assert normalizar_ciudad(variante) == "Medellín"
+    assert normalizar_ciudad("Itagﾃｼí") == "Itagüí"
+    assert normalizar_ciudad("Ciudad") is None
+    assert normalizar_sector("Asociacones Gremiales") == "Asociaciones Gremiales"
+    assert normalizar_sector("Tecnologia") == "Tecnología"
 
 
 def test_ingesta_raw_bronze_y_normalizacion_evento(tmp_path: Path) -> None:
