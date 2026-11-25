@@ -676,7 +676,7 @@ def construir_agg_participacion_eventos(
     filas: list[dict[str, Any]] = []
     for _, ev in dim_ev.iterrows():
         ev_id = str(ev["id_evento"])
-        sub = fact_asist[fact_asist["id_evento"] == ev_id]
+        sub = fact_asist[fact_asist["id_evento"].astype(str) == ev_id]
         tot = int(len(sub))
         no_af = (
             int((~sub["es_afiliado"].astype(bool)).sum())
