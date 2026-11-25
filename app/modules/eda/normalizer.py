@@ -50,7 +50,6 @@ CIUDADES_CANONICAS: dict[str, str] = {
     "chia": "Chía",
     "sopo": "Sopó",
     "gachancipa": "Gachancipá",
-    "quindio": "Quindío",
     "monteria": "Montería",
     "jamundi": "Jamundí",
     "guacari": "Guacarí",
@@ -71,10 +70,62 @@ CIUDADES_CANONICAS: dict[str, str] = {
     "pereira": "Pereira",
     "santa marta": "Santa Marta",
     "la estrella": "La Estrella",
+    "floridablanca giron": "Floridablanca",
     "amdes": "Andes",
-    "mexico": "México",
     "madrid espana": "Madrid (España)",
 }
+
+DEPARTAMENTOS_COLOMBIA: dict[str, str] = {
+    "antioquia": "Antioquia",
+    "quindio": "Quindío",
+    "cundinamarca": "Cundinamarca",
+    "valle del cauca": "Valle del Cauca",
+    "atlantico": "Atlántico",
+    "bolivar": "Bolívar",
+    "santander": "Santander",
+    "norte de santander": "Norte de Santander",
+    "boyaca": "Boyacá",
+    "tolima": "Tolima",
+    "huila": "Huila",
+    "risaralda": "Risaralda",
+    "caldas": "Caldas",
+    "meta": "Meta",
+    "cesar": "Cesar",
+    "cordoba": "Córdoba",
+    "magdalena": "Magdalena",
+    "narino": "Nariño",
+    "cauca": "Cauca",
+    "sucre": "Sucre",
+    "casanare": "Casanare",
+    "caqueta": "Caquetá",
+    "choco": "Chocó",
+    "la guajira": "La Guajira",
+    "arauca": "Arauca",
+    "putumayo": "Putumayo",
+    "amazonas": "Amazonas",
+    "guaviare": "Guaviare",
+    "guainia": "Guainía",
+    "vaupes": "Vaupés",
+    "vichada": "Vichada",
+    "san andres": "San Andrés",
+}
+
+PAISES_NO_CIUDAD: frozenset[str] = frozenset(
+    {
+        "colombia",
+        "mexico",
+        "espana",
+        "peru",
+        "chile",
+        "argentina",
+        "ecuador",
+        "panama",
+        "venezuela",
+        "guatemala",
+        "estados unidos",
+        "usa",
+    }
+)
 
 CIUDADES_INVALIDAS: frozenset[str] = frozenset({"ciudad", "huy", "sin dato", "na", "n a"})
 
@@ -242,21 +293,46 @@ def _title_case_es(texto: str) -> str:
     return " ".join(resultado)
 
 
-def normalizar_ciudad(valor: Any) -> str | None:
-    """Homologa variantes ortográficas, mayúsculas y tildes de nombres de ciudades.
+def extraer_departamento_si_aplica(valor: Any) -> str | None:
+    """Retorna el nombre canónico del departamento si el texto corresponde a uno.
 
     Args:
-        valor: Nombre de ciudad proveniente de CRM, asistencias o encuestas.
+        valor: Valor textual reportado en un campo geográfico.
 
     Returns:
-        Nombre canónico de la ciudad o None si es nulo o placeholder inválido.
+        Nombre canónico del departamento colombiano o None si no es departamento.
 
     """
     texto = limpiar_texto_y_mojibake(valor)
     if texto is None:
         return None
     clave = _clave_canonica(texto)
-    if not clave or clave in CIUDADES_INVALIDAS:
+    return DEPARTAMENTOS_COLOMBIA.get(clave)
+
+
+def normalizar_ciudad(valor: Any) -> str | None:
+    """Homologa variantes ortográficas, mayúsculas y tildes de nombres de ciudades.
+
+    Excluye departamentos colombianos, nombres de países y placeholders inválidos
+    para que la columna ciudad contenga exclusivamente municipios/ciudades.
+
+    Args:
+        valor: Nombre de ciudad proveniente de CRM, asistencias o encuestas.
+
+    Returns:
+        Nombre canónico de la ciudad o None si es nulo, departamento, país o inválido.
+
+    """
+    texto = limpiar_texto_y_mojibake(valor)
+    if texto is None:
+        return None
+    clave = _clave_canonica(texto)
+    if (
+        not clave
+        or clave in CIUDADES_INVALIDAS
+        or clave in DEPARTAMENTOS_COLOMBIA
+        or clave in PAISES_NO_CIUDAD
+    ):
         return None
     if clave in CIUDADES_CANONICAS:
         return CIUDADES_CANONICAS[clave]
