@@ -197,6 +197,7 @@ def _procesar_dim_empresas(
         df_emp_silver,
         cols_texto=("subsector_economico",),
         cols_ciudad=("ciudad",),
+        cols_pais=("pais",),
         cols_sector=("sector_economico",),
     )
     df_emp_silver, rech = filtrar_registros_rechazados(
