@@ -16,6 +16,7 @@ const endpoints = {
   exportCsv: '/retention/silver/export',
   etlStatus: '/etl/monitor/status',
   etlStepOutput: '/etl/monitor/step-output',
+  etlSchedule: '/etl/monitor/schedule',
 };
 
 const state = {
@@ -33,6 +34,7 @@ const state = {
   etlRunId: null,
   etlSelectedStep: null,
   etlAutoTimer: null,
+  etlLoading: false,
   etlAutoEnabled: localStorage.getItem('actho-etl-auto') === 'true',
 };
 
@@ -145,7 +147,7 @@ function syncEtlAutoRefresh() {
   if (btn) {
     btn.classList.toggle('is-on', state.etlAutoEnabled);
     btn.setAttribute('aria-pressed', String(state.etlAutoEnabled));
-    btn.textContent = state.etlAutoEnabled ? 'Auto-recarga: ON (10s)' : 'Auto-recarga: OFF';
+    btn.textContent = state.etlAutoEnabled ? 'Auto-recarga: ON (2s)' : 'Auto-recarga: OFF';
   }
   if (state.etlAutoTimer) {
     clearInterval(state.etlAutoTimer);
@@ -153,8 +155,8 @@ function syncEtlAutoRefresh() {
   }
   if (state.etlAutoEnabled && state.tab === 'etl') {
     state.etlAutoTimer = setInterval(() => {
-      if (state.tab === 'etl') loadEtlMonitor(null);
-    }, 10000);
+      if (state.tab === 'etl' && !state.etlLoading) loadEtlMonitor(null);
+    }, 2000);
   }
 }
 
@@ -231,6 +233,8 @@ async function inspectEtlStep(step) {
 }
 
 async function loadEtlMonitor(runId = null) {
+  if (state.etlLoading) return;
+  state.etlLoading = true;
   try {
     const data = await request(endpoints.etlStatus + query({ run_id: runId }));
     const { flow, timing, progress, steps, history, quality_summary: qs } = data;
@@ -270,8 +274,12 @@ async function loadEtlMonitor(runId = null) {
     fillEl.classList.toggle('is-failed', timing.status === 'FAILED');
     byId('etl-last-ago').textContent = timing.last_run_ago;
     byId('etl-last-ts').textContent = timing.last_run_end || '—';
-    byId('etl-next-in').textContent = timing.next_run_in;
-    byId('etl-next-ts').textContent = timing.next_run_iso || '—';
+    byId('etl-next-in').textContent =
+      timing.status === 'RUNNING' ? 'Esperando fin…' : timing.next_run_in;
+    byId('etl-next-ts').textContent =
+      timing.status === 'RUNNING'
+        ? 'Concurrencia = 1 (en cola)'
+        : timing.next_run_iso || '—';
     byId('etl-elapsed').textContent = formatDuration(timing.elapsed_seconds);
     byId('etl-steps-ratio').textContent = `${progress.completed_steps} / ${progress.total_steps}`;
     byId('etl-records-loaded').textContent = progress.registros_cargados.toLocaleString('es-CO');
@@ -313,6 +321,10 @@ async function loadEtlMonitor(runId = null) {
     if (defaultStep) inspectEtlStep(defaultStep);
 
     byId('etl-cron-badge').textContent = flow.schedule_cron;
+    const cronInput = byId('etl-cron-input');
+    if (cronInput && document.activeElement !== cronInput) {
+      cronInput.value = flow.schedule_cron;
+    }
     byId('etl-schedule-details').innerHTML = `
       <div><span>Zona horaria</span><strong>${escapeHtml(flow.schedule_timezone)}</strong></div>
       <div><span>Fuentes Bronze</span><strong>${qs.fuentes_bronze_verificadas} SHA-256</strong></div>
@@ -336,6 +348,8 @@ async function loadEtlMonitor(runId = null) {
   } catch (err) {
     byId('etl-status-text').textContent = 'SIN CONEXIÓN';
     byId('etl-status-sub').textContent = 'No fue posible consultar /etl/monitor/status.';
+  } finally {
+    state.etlLoading = false;
   }
 }
 
@@ -1228,6 +1242,35 @@ byId('etl-autorefresh-btn')?.addEventListener('click', () => {
   state.etlAutoEnabled = !state.etlAutoEnabled;
   localStorage.setItem('actho-etl-auto', String(state.etlAutoEnabled));
   syncEtlAutoRefresh();
+});
+document.querySelectorAll('[data-cron-preset]').forEach((btn) =>
+  btn.addEventListener('click', () => {
+    const input = byId('etl-cron-input');
+    if (input) input.value = btn.dataset.cronPreset;
+  })
+);
+byId('etl-cron-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const input = byId('etl-cron-input');
+  const fb = byId('etl-cron-feedback');
+  const cron = (input?.value || '').trim();
+  if (!cron) return;
+  fb.classList.remove('is-error');
+  fb.textContent = 'Actualizando cron en Prefect…';
+  try {
+    const resp = await fetch(endpoints.etlSchedule, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cron }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Error al actualizar cron');
+    fb.textContent = `Guardado: ${data.schedule_label} · Próxima: ${data.next_run_iso} (${data.next_run_in})`;
+    await loadEtlMonitor(null);
+  } catch (err) {
+    fb.classList.add('is-error');
+    fb.textContent = err.message || 'No fue posible actualizar el cron.';
+  }
 });
 syncEtlAutoRefresh();
 

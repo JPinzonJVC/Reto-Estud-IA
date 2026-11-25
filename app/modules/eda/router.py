@@ -3,15 +3,48 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.modules.eda.monitor_service import EtlMonitorService
+from app.modules.eda.monitor_service import EtlMonitorService, actualizar_cron_prefect
 
 eda_monitor_router = APIRouter(
     prefix="/etl/monitor",
     tags=["Orquestación Prefect & ETL"],
 )
+
+
+class ScheduleUpdateRequest(BaseModel):
+    """Solicitud para actualizar el cron del deployment activo en Prefect."""
+
+    cron: str
+    """Expresión cron de 5 campos (ej. '*/5 * * * *' o '0 6 * * 1')."""
+
+    timezone: str | None = None
+    """Zona horaria IANA opcional (ej. 'America/Bogota')."""
+
+
+@eda_monitor_router.put("/schedule")
+def update_etl_schedule(payload: ScheduleUpdateRequest) -> dict[str, Any]:
+    """Actualiza el cron del deployment de Prefect directamente desde el frontend.
+
+    Args:
+        payload: Objeto con la nueva expresión cron y zona horaria opcional.
+
+    Returns:
+        Confirmación con el nuevo cron, etiqueta legible y próxima ejecución.
+
+    Raises:
+        HTTPException: 400 si el cron es inválido o 503 si Prefect no responde.
+
+    """
+    try:
+        return actualizar_cron_prefect(payload.cron, payload.timezone)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @eda_monitor_router.get("/status")

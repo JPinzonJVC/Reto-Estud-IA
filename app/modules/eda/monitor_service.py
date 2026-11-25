@@ -223,12 +223,41 @@ def _consultar_prefect_live(api_url: str) -> dict[str, Any]:
                                 task_runs = t_data
                     except Exception:
                         task_runs = []
+                # Consultar deployment activo para leer cron/schedule real en Prefect
+                active_cron: str | None = None
+                active_tz: str | None = None
+                dep_id: str | None = None
+                sched_id: str | None = None
+                dep_req = urllib.request.Request(
+                    f"{base}/deployments/filter",
+                    data=json.dumps({"limit": 10}).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                try:
+                    with urllib.request.urlopen(dep_req, timeout=1.2) as d_resp:
+                        deps = json.loads(d_resp.read().decode("utf-8"))
+                        if isinstance(deps, list) and deps:
+                            dep = deps[0]
+                            dep_id = dep.get("id")
+                            scheds = dep.get("schedules") or []
+                            if scheds:
+                                sched_id = scheds[0].get("id")
+                                sch = scheds[0].get("schedule") or {}
+                                active_cron = sch.get("cron")
+                                active_tz = sch.get("timezone")
+                except Exception:
+                    pass
                 return {
                     "connected": True,
                     "api_url": base,
                     "flow_runs": runs_list,
                     "latest_executed_run": active_run,
                     "task_runs": task_runs,
+                    "deployment_id": dep_id,
+                    "schedule_id": sched_id,
+                    "active_cron": active_cron,
+                    "active_timezone": active_tz,
                 }
         except Exception:
             continue
@@ -238,6 +267,82 @@ def _consultar_prefect_live(api_url: str) -> dict[str, Any]:
         "flow_runs": [],
         "latest_executed_run": None,
         "task_runs": [],
+        "deployment_id": None,
+        "schedule_id": None,
+        "active_cron": None,
+        "active_timezone": None,
+    }
+
+
+def actualizar_cron_prefect(
+    cron_expr: str,
+    timezone: str | None = None,
+) -> dict[str, Any]:
+    """Actualiza el cron del deployment activo en Prefect Server en caliente.
+
+    Args:
+        cron_expr: Expresión cron válida de 5 campos (ej. '*/5 * * * *').
+        timezone: Zona horaria IANA opcional (por defecto EDA_SCHEDULE_TIMEZONE).
+
+    Returns:
+        Diccionario con cron aplicado, zona horaria y próxima ejecución calculada.
+
+    Raises:
+        ValueError: Si la expresión cron no es válida.
+        RuntimeError: Si Prefect Server no está accesible o no tiene deployment.
+
+    """
+    cleaned = " ".join(cron_expr.strip().split())
+    if len(cleaned.split(" ")) != 5:
+        raise ValueError("El cron debe tener exactamente 5 campos (ej. '*/5 * * * *').")
+    orch = OrchestrationEnvs()
+    tz_name = (timezone or orch.schedule_timezone).strip()
+    next_dt = calcular_proxima_ejecucion(cleaned, tz_name)
+    if next_dt is None:
+        raise ValueError(f"Expresión cron inválida o sin próximas ejecuciones: '{cleaned}'.")
+
+    live = _consultar_prefect_live(orch.prefect_api_url)
+    if not live["connected"] or not live["deployment_id"]:
+        raise RuntimeError(
+            "No fue posible conectar con Prefect Server o no existe deployment activo."
+        )
+
+    base = live["api_url"].rstrip("/")
+    dep_id = live["deployment_id"]
+    sched_id = live["schedule_id"]
+    schedule_obj = {"cron": cleaned, "timezone": tz_name, "day_or": True}
+
+    if sched_id:
+        url = f"{base}/deployments/{dep_id}/schedules/{sched_id}"
+        body = json.dumps({"active": True, "schedule": schedule_obj}).encode("utf-8")
+        method = "PATCH"
+    else:
+        url = f"{base}/deployments/{dep_id}/schedules"
+        body = json.dumps([{"active": True, "schedule": schedule_obj}]).encode("utf-8")
+        method = "POST"
+
+    req = urllib.request.Request(
+        url,
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method=method,
+    )
+    with urllib.request.urlopen(req, timeout=3.0) as resp:
+        if resp.status not in (200, 201, 204):
+            raise RuntimeError(f"Prefect devolvió estado HTTP {resp.status}.")
+
+    try:
+        tz = ZoneInfo(tz_name)
+    except Exception:
+        tz = ZoneInfo("UTC")
+    now_tz = datetime.now(tz)
+    return {
+        "status": "UPDATED",
+        "cron": cleaned,
+        "timezone": tz_name,
+        "schedule_label": describir_cron(cleaned),
+        "next_run_iso": next_dt.strftime("%Y-%m-%d %H:%M"),
+        "next_run_in": _format_delta_es((next_dt - now_tz).total_seconds(), future=True),
     }
 
 
@@ -294,7 +399,13 @@ class EtlMonitorService:
             tz = ZoneInfo("UTC")
 
         prefect_live = _consultar_prefect_live(orch.prefect_api_url)
-        next_run_dt = calcular_proxima_ejecucion(orch.schedule_cron, orch.schedule_timezone)
+        effective_cron = prefect_live.get("active_cron") or orch.schedule_cron
+        effective_tz = prefect_live.get("active_timezone") or orch.schedule_timezone
+        try:
+            tz = ZoneInfo(effective_tz)
+        except Exception:
+            tz = ZoneInfo("UTC")
+        next_run_dt = calcular_proxima_ejecucion(effective_cron, effective_tz)
         now_tz = datetime.now(tz)
 
         ejecuciones = (
@@ -592,9 +703,9 @@ class EtlMonitorService:
             "flow": {
                 "name": "eda-medallion-weekly-pipeline",
                 "deployment": orch.deployment_name,
-                "schedule_cron": orch.schedule_cron,
-                "schedule_timezone": orch.schedule_timezone,
-                "schedule_label": describir_cron(orch.schedule_cron),
+                "schedule_cron": effective_cron,
+                "schedule_timezone": effective_tz,
+                "schedule_label": describir_cron(effective_cron),
                 "prefect_connected": prefect_live["connected"],
                 "prefect_api_url": orch.prefect_api_url,
                 "prefect_live_runs": len(prefect_live["flow_runs"]),

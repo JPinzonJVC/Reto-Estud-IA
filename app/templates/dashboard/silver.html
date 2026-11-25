@@ -430,6 +430,19 @@
                 <div><p class="eyebrow">Prefect & auditoría</p><h2>Programación e historial</h2></div>
                 <span id="etl-cron-badge" class="tag">—</span>
               </div>
+              <form id="etl-cron-form" class="etl-cron-form">
+                <div class="etl-cron-row">
+                  <input id="etl-cron-input" type="text" placeholder="*/5 * * * *" aria-label="Expresión cron de 5 campos" required>
+                  <button type="submit" class="btn-csv">Guardar cron</button>
+                </div>
+                <div class="etl-cron-presets">
+                  <button type="button" data-cron-preset="*/5 * * * *">Cada 5 min</button>
+                  <button type="button" data-cron-preset="0 * * * *">Cada hora</button>
+                  <button type="button" data-cron-preset="0 6 * * *">Diario 06:00</button>
+                  <button type="button" data-cron-preset="0 6 * * 1">Semanal Lun 06:00</button>
+                </div>
+                <small id="etl-cron-feedback" class="etl-cron-feedback" aria-live="polite"></small>
+              </form>
               <div id="etl-schedule-details" class="etl-schedule-grid"></div>
               <ul id="etl-history-list" class="etl-history-list" aria-live="polite"></ul>
             </article>
