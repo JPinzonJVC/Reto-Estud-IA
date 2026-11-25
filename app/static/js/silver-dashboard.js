@@ -61,12 +61,53 @@ function escapeHtml(text) {
     .replaceAll('"', '&quot;');
 }
 
+/* FLOATING TOOLTIP FOR ALL SVG & BAR DATA POINTS */
+const tooltipEl = byId('chart-tooltip');
+document.addEventListener('pointermove', (e) => {
+  const target = e.target.closest?.('[data-tip]');
+  if (!target) {
+    tooltipEl.hidden = true;
+    return;
+  }
+  tooltipEl.textContent = target.dataset.tip;
+  tooltipEl.style.left = `${e.clientX}px`;
+  tooltipEl.style.top = `${e.clientY}px`;
+  tooltipEl.hidden = false;
+});
+document.addEventListener('pointerout', (e) => {
+  if (!e.relatedTarget || !e.relatedTarget.closest?.('[data-tip]')) {
+    tooltipEl.hidden = true;
+  }
+});
+
+/* SMOOTH CUBIC BEZIER PATH HELPER (HORIZON UI STYLE) */
+function smoothPath(points) {
+  if (!points.length) return '';
+  if (points.length === 1) return `M${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
+  let d = `M${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const p0 = points[Math.max(i - 1, 0)];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[Math.min(i + 2, points.length - 1)];
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
+  }
+  return d;
+}
+
 function setActiveTab(tabName) {
   state.tab = tabName;
   document.querySelectorAll('[data-tab]').forEach((btn) => {
     const active = btn.dataset.tab === tabName;
     btn.classList.toggle('is-active', active);
     btn.setAttribute('aria-selected', String(active));
+    if (active && btn.dataset.title) {
+      byId('view-heading').textContent = btn.dataset.title;
+    }
   });
   document.querySelectorAll('[data-view]').forEach((panel) => {
     panel.classList.toggle('is-active', panel.dataset.view === tabName);
@@ -87,8 +128,16 @@ function renderTrendAreaChart(participation, satisfaction) {
       'Composición NPS adaptado (4–5 promotor, 3 neutro, 1–2 detractor).';
     target.innerHTML = total
       ? `<div class="nps-summary"><strong>${nps}</strong><span>NPS adaptado (${total} respuestas)</span></div>
-         <div class="stacked"><i class="promoter" style="width:${(promoters / total) * 100}%"></i><i class="neutral" style="width:${(neutral / total) * 100}%"></i><i class="detractor" style="width:${(detractors / total) * 100}%"></i></div>
-         <div class="nps-legend"><span><i class="promoter"></i>Promotores ${promoters} (${Math.round((promoters / total) * 100)}%)</span><span><i class="neutral"></i>Neutros ${neutral}</span><span><i class="detractor"></i>Detractores ${detractors}</span></div>`
+         <div class="stacked">
+           <i class="promoter" style="width:${(promoters / total) * 100}%" data-tip="Promotores: ${promoters}"></i>
+           <i class="neutral" style="width:${(neutral / total) * 100}%" data-tip="Neutros: ${neutral}"></i>
+           <i class="detractor" style="width:${(detractors / total) * 100}%" data-tip="Detractores: ${detractors}"></i>
+         </div>
+         <div class="nps-legend">
+           <span><i class="promoter"></i>Promotores ${promoters} (${Math.round((promoters / total) * 100)}%)</span>
+           <span><i class="neutral"></i>Neutros ${neutral}</span>
+           <span><i class="detractor"></i>Detractores ${detractors}</span>
+         </div>`
       : '<p>Sin encuestas para estos filtros.</p>';
     return;
   }
@@ -115,7 +164,7 @@ function renderTrendAreaChart(participation, satisfaction) {
   });
 
   description.textContent =
-    'Área violeta: asistencias por mes · Línea naranja: satisfacción promedio (1–5).';
+    'Curva violeta: asistencias por mes · Curva cian: satisfacción promedio (1–5).';
 
   if (!periods.length) {
     target.innerHTML = '<p>Sin periodos para mostrar.</p>';
@@ -123,8 +172,8 @@ function renderTrendAreaChart(participation, satisfaction) {
   }
 
   const w = 560;
-  const h = 210;
-  const pad = { l: 38, r: 34, t: 18, b: 30 };
+  const h = 215;
+  const pad = { l: 38, r: 24, t: 18, b: 28 };
   const plotW = w - pad.l - pad.r;
   const plotH = h - pad.t - pad.b;
   const maxAtt = Math.max(...attValues, 1);
@@ -134,10 +183,11 @@ function renderTrendAreaChart(participation, satisfaction) {
     x: pad.l + (periods.length > 1 ? i * stepX : plotW / 2),
     y: pad.t + plotH - (val / maxAtt) * plotH,
     val,
+    period: periods[i],
     label: periods[i].slice(2),
   }));
 
-  const linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const linePath = smoothPath(pts);
   const areaPath = `${linePath} L${pts[pts.length - 1].x.toFixed(1)},${(pad.t + plotH).toFixed(1)} L${pts[0].x.toFixed(1)},${(pad.t + plotH).toFixed(1)} Z`;
 
   const satPts = satValues
@@ -148,45 +198,42 @@ function renderTrendAreaChart(participation, satisfaction) {
             x: pts[i].x,
             y: pad.t + plotH - (Math.max(0, Math.min(5, val)) / 5) * plotH,
             val,
-            label: periods[i],
+            period: periods[i],
           }
     )
     .filter(Boolean);
-  const satPath = satPts
-    .map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`)
-    .join(' ');
+  const satPath = smoothPath(satPts);
 
   const gridLines = [0, 0.5, 1]
     .map((ratio) => {
       const y = pad.t + plotH - ratio * plotH;
-      const lbl = Math.round(maxAtt * ratio);
-      return `<line x1="${pad.l}" y1="${y}" x2="${w - pad.r}" y2="${y}" stroke="var(--line)" stroke-dasharray="3 3"/>
-              <text x="${pad.l - 6}" y="${y + 3}" text-anchor="end" font-size="9" fill="var(--sub)">${lbl}</text>`;
+      return `<line x1="${pad.l}" y1="${y}" x2="${w - pad.r}" y2="${y}" stroke="var(--line)" stroke-dasharray="4 4"/>
+              <text x="${pad.l - 8}" y="${y + 3}" text-anchor="end" font-size="9.5" fill="var(--muted)">${Math.round(maxAtt * ratio)}</text>`;
     })
     .join('');
 
   target.innerHTML = `<svg class="svg-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="Tendencia mensual de asistencias y satisfacción">
     <defs>
-      <linearGradient id="attGrad" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#5000bf" stop-opacity="0.32"/>
-        <stop offset="100%" stop-color="#5000bf" stop-opacity="0.02"/>
+      <linearGradient id="horizonArea" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#5000bf" stop-opacity="0.28"/>
+        <stop offset="100%" stop-color="#5000bf" stop-opacity="0.01"/>
       </linearGradient>
     </defs>
     ${gridLines}
-    <path d="${areaPath}" fill="url(#attGrad)"/>
-    <path d="${linePath}" fill="none" stroke="var(--violet)" stroke-width="2.4" stroke-linejoin="round"/>
-    ${satPath ? `<path d="${satPath}" fill="none" stroke="var(--orange)" stroke-width="2" stroke-dasharray="4 3"/>` : ''}
+    <path d="${areaPath}" fill="url(#horizonArea)"/>
+    <path d="${linePath}" fill="none" stroke="var(--brand)" stroke-width="3" stroke-linecap="round"/>
+    ${satPath ? `<path d="${satPath}" fill="none" stroke="var(--cyan)" stroke-width="2.5" stroke-linecap="round"/>` : ''}
     ${pts
       .map(
         (p) =>
-          `<circle cx="${p.x}" cy="${p.y}" r="3.5" fill="var(--violet)"><title>${p.label}: ${p.val} asistencias</title></circle>
-           <text x="${p.x}" y="${h - 10}" text-anchor="middle" font-size="9" fill="var(--sub)">${p.label}</text>`
+          `<circle cx="${p.x}" cy="${p.y}" r="4.5" fill="var(--surface)" stroke="var(--brand)" stroke-width="2.5" data-tip="${p.period} · ${p.val} asistencias"/>
+           <text x="${p.x}" y="${h - 8}" text-anchor="middle" font-size="9.5" font-weight="600" fill="var(--muted)">${p.label}</text>`
       )
       .join('')}
     ${satPts
       .map(
         (p) =>
-          `<circle cx="${p.x}" cy="${p.y}" r="3" fill="var(--orange)"><title>${p.label}: satisfacción ${p.val.toFixed(2)}</title></circle>`
+          `<circle cx="${p.x}" cy="${p.y}" r="3.8" fill="var(--surface)" stroke="var(--cyan)" stroke-width="2.2" data-tip="${p.period} · Satisfacción ${p.val.toFixed(2)}"/>`
       )
       .join('')}
   </svg>`;
@@ -207,13 +254,13 @@ function renderOverviewLines(audience) {
         const noAfPct = (item.no_afiliados / max) * 100;
         return `<div class="bar-row"><span>${escapeHtml(item.linea_oferta)}</span>
           <div class="track stacked-track">
-            <div class="fill" style="width:${afPct}%" title="Afiliados: ${item.afiliados}"></div>
-            <div class="fill lead" style="width:${noAfPct}%" title="Leads: ${item.no_afiliados}"></div>
+            <div class="fill" style="width:${afPct}%" data-tip="${escapeHtml(item.linea_oferta)} · Afiliados: ${item.afiliados}"></div>
+            <div class="fill lead" style="width:${noAfPct}%" data-tip="${escapeHtml(item.linea_oferta)} · Leads: ${item.no_afiliados}"></div>
           </div>
           <b>${item.asistencias}</b></div>`;
       })
       .join('') || '<p>Sin datos por línea.</p>'
-  }</div><div class="nps-legend"><span><i style="background:var(--violet)"></i>Afiliados (${total - leads})</span><span><i style="background:var(--orange)"></i>No afiliados / Leads (${leads})</span></div>`;
+  }</div><div class="nps-legend"><span><i style="background:var(--brand)"></i>Afiliados (${total - leads})</span><span><i style="background:var(--accent)"></i>Leads (${leads})</span></div>`;
 }
 
 function renderKamColumnChart(items, targetId) {
@@ -223,38 +270,161 @@ function renderKamColumnChart(items, targetId) {
     return;
   }
   const w = 520;
-  const h = 205;
-  const pad = { l: 34, r: 12, t: 16, b: 36 };
+  const h = 210;
+  const pad = { l: 34, r: 12, t: 16, b: 34 };
   const plotW = w - pad.l - pad.r;
   const plotH = h - pad.t - pad.b;
   const maxVal = Math.max(...top.map((k) => k.afiliados_activos), 1);
   const groupW = plotW / top.length;
-  const barW = Math.min(16, (groupW - 10) / 3);
+  const barW = Math.min(14, (groupW - 12) / 3);
 
   const grid = [0, 0.5, 1]
     .map((r) => {
       const y = pad.t + plotH - r * plotH;
-      return `<line x1="${pad.l}" y1="${y}" x2="${w - pad.r}" y2="${y}" stroke="var(--line)" stroke-dasharray="3 3"/>
-              <text x="${pad.l - 5}" y="${y + 3}" text-anchor="end" font-size="9" fill="var(--sub)">${Math.round(maxVal * r)}</text>`;
+      return `<line x1="${pad.l}" y1="${y}" x2="${w - pad.r}" y2="${y}" stroke="var(--line)" stroke-dasharray="4 4"/>
+              <text x="${pad.l - 6}" y="${y + 3}" text-anchor="end" font-size="9.5" fill="var(--muted)">${Math.round(maxVal * r)}</text>`;
     })
     .join('');
 
   const bars = top
     .map((k, i) => {
-      const gx = pad.l + i * groupW + (groupW - barW * 3 - 4) / 2;
+      const gx = pad.l + i * groupW + (groupW - barW * 3 - 6) / 2;
       const hAct = (k.afiliados_activos / maxVal) * plotH;
       const hSrv = (k.empresas_con_asistencia / maxVal) * plotH;
       const hVen = (k.vencen_90d / maxVal) * plotH;
-      const lbl = k.responsable_nombre && k.responsable_nombre !== 'Sin asignar' ? k.responsable_nombre : k.kam_id.replace('KAM-', '');
-      return `<rect x="${gx}" y="${pad.t + plotH - hAct}" width="${barW}" height="${hAct}" rx="3" fill="var(--violet)"><title>${lbl}: ${k.afiliados_activos} activos</title></rect>
-              <rect x="${gx + barW + 2}" y="${pad.t + plotH - hSrv}" width="${barW}" height="${hSrv}" rx="3" fill="var(--teal)"><title>${lbl}: ${k.empresas_con_asistencia} con asistencia (${k.porcentaje_en_servicios}%)</title></rect>
-              <rect x="${gx + (barW + 2) * 2}" y="${pad.t + plotH - hVen}" width="${barW}" height="${hVen}" rx="3" fill="var(--orange)"><title>${lbl}: ${k.vencen_90d} vencen en 90d</title></rect>
-              <text x="${gx + barW * 1.5 + 2}" y="${h - 14}" text-anchor="middle" font-size="9" fill="var(--sub)">${escapeHtml(lbl.slice(0, 9))}</text>`;
+      const lbl =
+        k.responsable_nombre && k.responsable_nombre !== 'Sin asignar'
+          ? k.responsable_nombre
+          : k.kam_id.replace('KAM-', '');
+      return `<rect x="${gx}" y="${pad.t + plotH - hAct}" width="${barW}" height="${hAct}" rx="6" fill="var(--brand)" data-tip="${escapeHtml(lbl)} · ${k.afiliados_activos} activos"/>
+              <rect x="${gx + barW + 3}" y="${pad.t + plotH - hSrv}" width="${barW}" height="${hSrv}" rx="6" fill="var(--teal)" data-tip="${escapeHtml(lbl)} · ${k.empresas_con_asistencia} con asistencia (${k.porcentaje_en_servicios}%)"/>
+              <rect x="${gx + (barW + 3) * 2}" y="${pad.t + plotH - hVen}" width="${barW}" height="${hVen}" rx="6" fill="var(--accent)" data-tip="${escapeHtml(lbl)} · ${k.vencen_90d} vencen en 90d"/>
+              <text x="${gx + barW * 1.5 + 3}" y="${h - 12}" text-anchor="middle" font-size="9.5" font-weight="600" fill="var(--muted)">${escapeHtml(lbl.slice(0, 9))}</text>`;
     })
     .join('');
 
   byId(targetId).innerHTML = `<svg class="svg-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="Comparativa por ejecutiva KAM">${grid}${bars}</svg>
-    <div class="nps-legend"><span><i style="background:var(--violet)"></i>Activos</span><span><i style="background:var(--teal)"></i>Con asistencia</span><span><i style="background:var(--orange)"></i>Vencen 90d</span></div>`;
+    <div class="nps-legend"><span><i style="background:var(--brand)"></i>Activos</span><span><i style="background:var(--teal)"></i>Con asistencia</span><span><i style="background:var(--accent)"></i>Vencen 90d</span></div>`;
+}
+
+function renderExpirations(dist) {
+  state.lastDistribution = dist;
+  const target = byId('expirations-view');
+  const desc = byId('expirations-description');
+  if (!dist) return;
+
+  if (state.expView === 'global') {
+    const g = dist.vencimientos_global || {};
+    const buckets = [
+      { label: 'Vencidos', val: g.vencidos || 0, color: 'var(--danger)' },
+      { label: '0–30 días', val: g.d0_30 || 0, color: 'var(--accent)' },
+      { label: '31–60 días', val: g.d31_60 || 0, color: 'var(--brand)' },
+      { label: '61–90 días', val: g.d61_90 || 0, color: 'var(--teal)' },
+    ];
+    desc.textContent = `Próximos 90 días: ${g.total_90d || 0} activos · Vencidos: ${g.vencidos || 0}.`;
+    const w = 440;
+    const h = 190;
+    const pad = { l: 34, r: 16, t: 22, b: 30 };
+    const plotW = w - pad.l - pad.r;
+    const plotH = h - pad.t - pad.b;
+    const maxV = Math.max(...buckets.map((b) => b.val), 1);
+    const colW = plotW / buckets.length;
+    const barW = Math.min(44, colW * 0.48);
+
+    const grid = [0, 0.5, 1]
+      .map((r) => {
+        const y = pad.t + plotH - r * plotH;
+        return `<line x1="${pad.l}" y1="${y}" x2="${w - pad.r}" y2="${y}" stroke="var(--line)" stroke-dasharray="4 4"/>
+                <text x="${pad.l - 6}" y="${y + 3}" text-anchor="end" font-size="9.5" fill="var(--muted)">${Math.round(maxV * r)}</text>`;
+      })
+      .join('');
+
+    const bars = buckets
+      .map((b, i) => {
+        const x = pad.l + i * colW + (colW - barW) / 2;
+        const bh = (b.val / maxV) * plotH;
+        const y = pad.t + plotH - bh;
+        return `<rect x="${x}" y="${pad.t}" width="${barW}" height="${plotH}" rx="10" fill="var(--canvas)"/>
+                <rect x="${x}" y="${y}" width="${barW}" height="${bh}" rx="10" fill="${b.color}" data-tip="${b.label}: ${b.val} empresas"/>
+                <text x="${x + barW / 2}" y="${Math.max(y - 6, 13)}" text-anchor="middle" font-size="11" font-weight="800" fill="var(--ink)">${b.val}</text>
+                <text x="${x + barW / 2}" y="${h - 9}" text-anchor="middle" font-size="10" font-weight="600" fill="var(--muted)">${b.label}</text>`;
+      })
+      .join('');
+
+    target.innerHTML = `<svg class="svg-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="Curva de vencimientos 30, 60 y 90 días">${grid}${bars}</svg>`;
+    return;
+  }
+
+  const kams = (dist.vencimientos_por_kam || []).slice(0, 8);
+  const max = Math.max(...kams.map((k) => k.total_90d + k.vencidos), 1);
+  desc.textContent = 'Por KAM: vencidos (rojo), 0–30d (naranja), 31–60d (violeta), 61–90d (verde).';
+  target.innerHTML = `<div class="bar-list">${
+    kams
+      .map((k) => {
+        const lbl =
+          k.responsable_nombre && k.responsable_nombre !== 'Sin asignar'
+            ? k.responsable_nombre
+            : k.kam_id;
+        return `<div class="bar-row"><span title="${escapeHtml(lbl)}">${escapeHtml(lbl)}</span>
+          <div class="track stacked-track">
+            <div class="fill" style="width:${(k.vencidos / max) * 100}%;background:var(--danger);border-radius:0" data-tip="${escapeHtml(lbl)} · Vencidos: ${k.vencidos}"></div>
+            <div class="fill lead" style="width:${(k.d0_30 / max) * 100}%;border-radius:0" data-tip="${escapeHtml(lbl)} · 0-30d: ${k.d0_30}"></div>
+            <div class="fill" style="width:${(k.d31_60 / max) * 100}%;border-radius:0" data-tip="${escapeHtml(lbl)} · 31-60d: ${k.d31_60}"></div>
+            <div class="fill teal" style="width:${(k.d61_90 / max) * 100}%;border-radius:0" data-tip="${escapeHtml(lbl)} · 61-90d: ${k.d61_90}"></div>
+          </div>
+          <b>${k.total_90d}</b></div>`;
+      })
+      .join('') || '<p>Sin vencimientos en los próximos 90 días.</p>'
+  }</div>`;
+}
+
+function renderDistribution(dist) {
+  if (!dist) return;
+  const target = byId('distribution-view');
+  const desc = byId('distribution-description');
+
+  if (state.distView === 'sector') {
+    const items = dist.por_sector || [];
+    const max = Math.max(...items.map((i) => i.empresas), 1);
+    desc.textContent = `Top sectores económicos sobre ${dist.total_activos} afiliados activos.`;
+    target.innerHTML = `<div class="bar-list">${
+      items
+        .map(
+          (i) =>
+            `<div class="bar-row"><span title="${escapeHtml(i.sector)}">${escapeHtml(i.sector)}</span><div class="track"><div class="fill" style="width:${(i.empresas / max) * 100}%" data-tip="${escapeHtml(i.sector)}: ${i.empresas} (${i.porcentaje}%)"></div></div><b>${i.empresas} <small>(${i.porcentaje}%)</small></b></div>`
+        )
+        .join('') || '<p>Sin datos de sectores.</p>'
+    }</div>`;
+    return;
+  }
+
+  const items = state.distView === 'nivel' ? dist.por_nivel || [] : dist.por_tamano || [];
+  const labelKey = state.distView === 'nivel' ? 'nivel' : 'tamano';
+  const total = items.reduce((s, i) => s + i.empresas, 0);
+  const colors = ['#5000bf', '#39b8ff', '#05cd99', '#ff5a00', '#ffb547', '#9b82ff', '#8f9bba'];
+  let offset = 0;
+  const slices = items
+    .map((item, idx) => {
+      const share = total ? item.empresas / total : 0;
+      const c = `<circle cx="50" cy="50" r="38" pathLength="100" stroke="${colors[idx % colors.length]}" stroke-dasharray="${share * 100} ${100 - share * 100}" stroke-dashoffset="${-offset}" data-tip="${escapeHtml(item[labelKey])}: ${item.empresas} (${item.porcentaje}%)"/>`;
+      offset += share * 100;
+      return c;
+    })
+    .join('');
+
+  desc.textContent =
+    state.distView === 'nivel'
+      ? `Distribución por nivel de membresía (${total} activos).`
+      : `Distribución por tamaño empresarial (${total} activos).`;
+  target.innerHTML = total
+    ? `<div class="donut-layout"><svg class="donut" viewBox="0 0 100 100" role="img" aria-label="Distribución de activos"><circle class="donut-base" cx="50" cy="50" r="38"/>${slices}<text x="50" y="48">${total}</text><text x="50" y="59">activos</text></svg>
+       <ul class="legend">${items
+         .map(
+           (item, idx) =>
+             `<li><i style="background:${colors[idx % colors.length]}"></i><span>${escapeHtml(item[labelKey])}</span><b>${item.empresas} (${item.porcentaje}%)</b></li>`
+         )
+         .join('')}</ul></div>`
+    : '<p>Sin datos para estos filtros.</p>';
 }
 
 function renderParticipation(items) {
@@ -268,25 +438,25 @@ function renderParticipation(items) {
           const noAf = item.asistentes_no_afiliados ?? 0;
           return `<div class="bar-row"><span title="${escapeHtml(item.nombre_evento)}">${escapeHtml(item.nombre_evento || 'Sin nombre')}</span>
             <div class="track stacked-track">
-              <div class="fill" style="width:${(af / max) * 100}%" title="Afiliados: ${af}"></div>
-              <div class="fill lead" style="width:${(noAf / max) * 100}%" title="Leads: ${noAf}"></div>
+              <div class="fill" style="width:${(af / max) * 100}%" data-tip="${escapeHtml(item.nombre_evento)} · Afiliados: ${af}"></div>
+              <div class="fill lead" style="width:${(noAf / max) * 100}%" data-tip="${escapeHtml(item.nombre_evento)} · Leads: ${noAf}"></div>
             </div>
             <b>${item.asistencias}</b></div>`;
         })
         .join('') || '<p>Sin asistencias para estos filtros.</p>'
-    }</div><div class="nps-legend"><span><i style="background:var(--violet)"></i>Afiliados</span><span><i style="background:var(--orange)"></i>Leads (No afiliados)</span></div>`;
+    }</div><div class="nps-legend"><span><i style="background:var(--brand)"></i>Afiliados</span><span><i style="background:var(--accent)"></i>Leads</span></div>`;
     return;
   }
 
   if (state.chart === 'donut') {
     const top = [...items].sort((a, b) => b.asistencias - a.asistencias).slice(0, 7);
     const total = top.reduce((sum, item) => sum + item.asistencias, 0);
-    const colors = ['#5000bf', '#ff5a00', '#2ea6a2', '#9f7aea', '#2b6cb0', '#d69e2e', '#e53e3e'];
+    const colors = ['#5000bf', '#ff5a00', '#05cd99', '#39b8ff', '#ffb547', '#9b82ff', '#ee5d50'];
     let offset = 0;
     const slices = top
       .map((item, idx) => {
         const share = total ? item.asistencias / total : 0;
-        const circle = `<circle cx="50" cy="50" r="38" pathLength="100" stroke="${colors[idx % colors.length]}" stroke-dasharray="${share * 100} ${100 - share * 100}" stroke-dashoffset="${-offset}"><title>${escapeHtml(item.nombre_evento)}: ${item.asistencias}</title></circle>`;
+        const circle = `<circle cx="50" cy="50" r="38" pathLength="100" stroke="${colors[idx % colors.length]}" stroke-dasharray="${share * 100} ${100 - share * 100}" stroke-dashoffset="${-offset}" data-tip="${escapeHtml(item.nombre_evento)}: ${item.asistencias}"/>`;
         offset += share * 100;
         return circle;
       })
@@ -320,12 +490,12 @@ function renderAudience(data) {
   if (state.audience === 'roles') {
     const items = (data.niveles_cargo || []).slice(0, 7);
     const total = items.reduce((s, i) => s + i.asistencias, 0);
-    const colors = ['#5000bf', '#2ea6a2', '#ff5a00', '#9f7aea', '#2b6cb0', '#d69e2e', '#718096'];
+    const colors = ['#5000bf', '#05cd99', '#39b8ff', '#ff5a00', '#ffb547', '#9b82ff', '#8f9bba'];
     let offset = 0;
     const slices = items
       .map((item, idx) => {
         const share = total ? item.asistencias / total : 0;
-        const c = `<circle cx="50" cy="50" r="38" pathLength="100" stroke="${colors[idx % colors.length]}" stroke-dasharray="${share * 100} ${100 - share * 100}" stroke-dashoffset="${-offset}"><title>${escapeHtml(item.nivel_cargo)}: ${item.asistencias}</title></circle>`;
+        const c = `<circle cx="50" cy="50" r="38" pathLength="100" stroke="${colors[idx % colors.length]}" stroke-dasharray="${share * 100} ${100 - share * 100}" stroke-dashoffset="${-offset}" data-tip="${escapeHtml(item.nivel_cargo)}: ${item.asistencias}"/>`;
         offset += share * 100;
         return c;
       })
@@ -357,8 +527,8 @@ function renderAudience(data) {
         const noAfPct = (item.no_afiliados / max) * 100;
         return `<div class="bar-row"><span>${escapeHtml(item[labelKey])}</span>
           <div class="track stacked-track">
-            <div class="fill" style="width:${afPct}%" title="Afiliados: ${item.afiliados}"></div>
-            <div class="fill lead" style="width:${noAfPct}%" title="Leads: ${item.no_afiliados}"></div>
+            <div class="fill" style="width:${afPct}%" data-tip="Afiliados: ${item.afiliados}"></div>
+            <div class="fill lead" style="width:${noAfPct}%" data-tip="Leads: ${item.no_afiliados}"></div>
           </div><b>${item.asistencias}</b></div>`;
       })
       .join('') || '<p>Sin datos.</p>'
@@ -374,9 +544,9 @@ function renderPillars(data) {
 
   const gaugeVal = pctMuj ?? 0;
   const gaugeSvg = `<div class="gauge-box">
-    <svg class="donut" style="width:94px" viewBox="0 0 100 100" role="img" aria-label="Participación femenina">
+    <svg class="donut" style="width:98px" viewBox="0 0 100 100" role="img" aria-label="Participación femenina">
       <circle class="donut-base" cx="50" cy="50" r="38"/>
-      <circle cx="50" cy="50" r="38" pathLength="100" stroke="var(--orange)" stroke-dasharray="${gaugeVal} ${100 - gaugeVal}"/>
+      <circle cx="50" cy="50" r="38" pathLength="100" stroke="var(--accent)" stroke-dasharray="${gaugeVal} ${100 - gaugeVal}"/>
       <text x="50" y="53">${pctMuj !== null ? `${pctMuj}%` : '—'}</text>
     </svg>
     <small>Mujeres promedio</small>
@@ -385,7 +555,7 @@ function renderPillars(data) {
   const bars = `<div class="bar-list">${items
     .map(
       (item) =>
-        `<div class="bar-row"><span>${escapeHtml(item.nombre)}</span><div class="track"><div class="fill teal" style="width:${item.porcentaje}%"></div></div><b>${item.empresas} <small>(${item.porcentaje}%)</small></b></div>`
+        `<div class="bar-row"><span>${escapeHtml(item.nombre)}</span><div class="track"><div class="fill teal" style="width:${item.porcentaje}%" data-tip="${escapeHtml(item.nombre)}: ${item.empresas} (${item.porcentaje}%)"></div></div><b>${item.empresas} <small>(${item.porcentaje}%)</small></b></div>`
     )
     .join('')}</div>`;
 
@@ -418,7 +588,7 @@ function renderDimensionsRadar(data) {
     { key: 'conferencistas', label: 'Conferencistas' },
     { key: 'relevancia_temas', label: 'Relevancia' },
   ];
-  const cx = 140;
+  const cx = 145;
   const cy = 105;
   const rMax = 72;
   const angles = axes.map((_, i) => -Math.PI / 2 + (i * 2 * Math.PI) / axes.length);
@@ -435,17 +605,17 @@ function renderDimensionsRadar(data) {
     .map((a, i) => {
       const x2 = cx + rMax * Math.cos(a);
       const y2 = cy + rMax * Math.sin(a);
-      const lx = cx + (rMax + 22) * Math.cos(a);
-      const ly = cy + (rMax + 14) * Math.sin(a);
+      const lx = cx + (rMax + 24) * Math.cos(a);
+      const ly = cy + (rMax + 15) * Math.sin(a);
       return `<line x1="${cx}" y1="${cy}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="var(--line)"/>
-              <text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" font-size="9.5" fill="var(--sub)">${axes[i].label}</text>`;
+              <text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" font-size="9.5" font-weight="600" fill="var(--muted)">${axes[i].label}</text>`;
     })
     .join('');
 
-  const palette = { Presencial: '#5000bf', Virtual: '#ff5a00' };
+  const palette = { Presencial: '#5000bf', Virtual: '#39b8ff' };
   const polygons = rows
     .map((row, idx) => {
-      const color = palette[row.modalidad] || (idx === 0 ? '#5000bf' : '#2ea6a2');
+      const color = palette[row.modalidad] || (idx === 0 ? '#5000bf' : '#05cd99');
       const pts = axes
         .map((ax, i) => {
           const val = Math.max(0, Math.min(5, Number(row[ax.key] || 0)));
@@ -453,14 +623,14 @@ function renderDimensionsRadar(data) {
           return `${(cx + r * Math.cos(angles[i])).toFixed(1)},${(cy + r * Math.sin(angles[i])).toFixed(1)}`;
         })
         .join(' ');
-      return `<polygon points="${pts}" fill="${color}" fill-opacity="0.16" stroke="${color}" stroke-width="2"><title>${escapeHtml(row.modalidad)}: promedio ${row.promedio_general}</title></polygon>`;
+      return `<polygon points="${pts}" fill="${color}" fill-opacity="0.18" stroke="${color}" stroke-width="2.4" data-tip="${escapeHtml(row.modalidad)} · Promedio ${row.promedio_general}"/>`;
     })
     .join('');
 
   byId('dimensions-radar').innerHTML = rows.length
-    ? `<svg class="svg-chart" style="max-height:210px" viewBox="0 0 280 210" role="img" aria-label="Radar de dimensiones de satisfacción">${rings}${spokes}${polygons}</svg>
+    ? `<svg class="svg-chart" style="max-height:210px" viewBox="0 0 290 210" role="img" aria-label="Radar de dimensiones de satisfacción">${rings}${spokes}${polygons}</svg>
        <div class="nps-legend">${rows
-         .map((r, i) => `<span><i style="background:${palette[r.modalidad] || (i === 0 ? '#5000bf' : '#2ea6a2')}"></i>${escapeHtml(r.modalidad)} (${r.promedio_general})</span>`)
+         .map((r, i) => `<span><i style="background:${palette[r.modalidad] || (i === 0 ? '#5000bf' : '#05cd99')}"></i>${escapeHtml(r.modalidad)} (${r.promedio_general})</span>`)
          .join('')}</div>`
     : '<p>Sin encuestas para este periodo.</p>';
 
@@ -481,6 +651,50 @@ function renderDimensionsRadar(data) {
           `<li>${escapeHtml(item.temario)}<small>${escapeHtml(item.modalidad || 'Encuesta')} · ${escapeHtml(item.fecha || 'Sin fecha')}</small></li>`
       )
       .join('') || '<li>Sin temarios sugeridos en este periodo.</li>';
+}
+
+function renderEngagementRisk(data) {
+  state.lastRisk = data;
+  if (!data) return;
+  const res = data.resumen || {};
+  const total = res.total_activos || 0;
+  const sinP = res.sin_participacion || 0;
+  const mono = res.monocontacto || 0;
+  const multi = res.multicontacto || 0;
+
+  byId('avg-people-tag').textContent = `${res.promedio_personas_participantes || 0} pers./empresa`;
+  byId('engagement-health-bar').innerHTML = total
+    ? `<div class="stacked">
+         <i class="detractor" style="width:${(sinP / total) * 100}%" data-tip="Sin participación: ${sinP}"></i>
+         <i class="neutral" style="width:${(mono / total) * 100}%" data-tip="Monocontacto: ${mono}"></i>
+         <i class="promoter" style="width:${(multi / total) * 100}%" data-tip="Multicontacto: ${multi}"></i>
+       </div>
+       <div class="nps-legend">
+         <span><i class="detractor"></i>Pagan y no participan: <b>${sinP}</b> (${Math.round((sinP / total) * 100)}%)</span>
+         <span><i class="neutral"></i>Monocontacto (1 pers.): <b>${mono}</b> (${Math.round((mono / total) * 100)}%)</span>
+         <span><i class="promoter"></i>Multicontacto (2+ pers.): <b>${multi}</b> (${Math.round((multi / total) * 100)}%)</span>
+       </div>`
+    : '<p>Sin afiliados activos en el filtro actual.</p>';
+
+  const list =
+    state.riskTab === 'sin_participacion'
+      ? data.lista_sin_participacion || []
+      : data.lista_monocontacto || [];
+
+  byId('risk-body').innerHTML =
+    list
+      .map(
+        (item) =>
+          `<tr><td>${escapeHtml(item.id_empresa)}</td><td>${escapeHtml(item.kam_nombre || item.kam_id || '—')}</td><td>${escapeHtml(item.nivel_membresia || '—')}</td><td>${escapeHtml(item.sector_economico || '—')}</td><td>${escapeHtml(item.ciudad || '—')}</td><td>${escapeHtml(item.fecha_expiracion || '—')}</td><td>${item.personas_participantes}</td><td>${item.asistencias}</td></tr>`
+      )
+      .join('') || '<tr><td colspan="8">Sin empresas en este segmento.</td></tr>';
+
+  const kam = byId('kam-filter').value;
+  const level = byId('level-filter').value;
+  const sector = byId('sector-filter').value;
+  const country = byId('country-filter').value;
+  const qs = query({ kam_id: kam, nivel_membresia: level, sector, pais: country });
+  byId('export-risk-btn').href = `${endpoints.exportCsv}/${state.riskTab}${qs}`;
 }
 
 function renderPortfolioRows(items) {
@@ -517,162 +731,6 @@ function renderSatisfaction(items) {
       .join('') || '<tr><td colspan="4">Sin encuestas para este periodo.</td></tr>';
 }
 
-function renderExpirations(dist) {
-  state.lastDistribution = dist;
-  const target = byId('expirations-view');
-  const desc = byId('expirations-description');
-  if (!dist) return;
-
-  if (state.expView === 'global') {
-    const g = dist.vencimientos_global || {};
-    const buckets = [
-      { label: 'Vencidos', val: g.vencidos || 0, color: '#e53e3e' },
-      { label: '0–30 días', val: g.d0_30 || 0, color: '#ff5a00' },
-      { label: '31–60 días', val: g.d31_60 || 0, color: '#5000bf' },
-      { label: '61–90 días', val: g.d61_90 || 0, color: '#2ea6a2' },
-    ];
-    desc.textContent = `Total vencen en próximos 90 días: ${g.total_90d || 0} activos · Ya vencidos: ${g.vencidos || 0}.`;
-    const w = 440;
-    const h = 185;
-    const pad = { l: 34, r: 16, t: 20, b: 30 };
-    const plotW = w - pad.l - pad.r;
-    const plotH = h - pad.t - pad.b;
-    const maxV = Math.max(...buckets.map((b) => b.val), 1);
-    const colW = plotW / buckets.length;
-    const barW = Math.min(54, colW * 0.56);
-
-    const grid = [0, 0.5, 1]
-      .map((r) => {
-        const y = pad.t + plotH - r * plotH;
-        return `<line x1="${pad.l}" y1="${y}" x2="${w - pad.r}" y2="${y}" stroke="var(--line)" stroke-dasharray="3 3"/>
-                <text x="${pad.l - 6}" y="${y + 3}" text-anchor="end" font-size="9" fill="var(--sub)">${Math.round(maxV * r)}</text>`;
-      })
-      .join('');
-
-    const bars = buckets
-      .map((b, i) => {
-        const x = pad.l + i * colW + (colW - barW) / 2;
-        const bh = (b.val / maxV) * plotH;
-        const y = pad.t + plotH - bh;
-        return `<rect x="${x}" y="${y}" width="${barW}" height="${bh}" rx="6" fill="${b.color}"><title>${b.label}: ${b.val} empresas</title></rect>
-                <text x="${x + barW / 2}" y="${y - 5}" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--ink)">${b.val}</text>
-                <text x="${x + barW / 2}" y="${h - 10}" text-anchor="middle" font-size="10" fill="var(--sub)">${b.label}</text>`;
-      })
-      .join('');
-
-    target.innerHTML = `<svg class="svg-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="Curva de vencimientos 30, 60 y 90 días">${grid}${bars}</svg>`;
-    return;
-  }
-
-  const kams = (dist.vencimientos_por_kam || []).slice(0, 8);
-  const max = Math.max(...kams.map((k) => k.total_90d + k.vencidos), 1);
-  desc.textContent = 'Vencimientos por ejecutiva KAM: vencidos (rojo), 0–30d (naranja), 31–60d (violeta), 61–90d (turquesa).';
-  target.innerHTML = `<div class="bar-list">${
-    kams
-      .map((k) => {
-        const lbl = k.responsable_nombre && k.responsable_nombre !== 'Sin asignar' ? k.responsable_nombre : k.kam_id;
-        return `<div class="bar-row"><span title="${escapeHtml(lbl)}">${escapeHtml(lbl)}</span>
-          <div class="track stacked-track">
-            <div class="fill" style="width:${(k.vencidos / max) * 100}%;background:#e53e3e" title="Vencidos: ${k.vencidos}"></div>
-            <div class="fill lead" style="width:${(k.d0_30 / max) * 100}%" title="0-30d: ${k.d0_30}"></div>
-            <div class="fill" style="width:${(k.d31_60 / max) * 100}%;border-radius:0" title="31-60d: ${k.d31_60}"></div>
-            <div class="fill teal" style="width:${(k.d61_90 / max) * 100}%;border-radius:0" title="61-90d: ${k.d61_90}"></div>
-          </div>
-          <b>${k.total_90d}</b></div>`;
-      })
-      .join('') || '<p>Sin vencimientos en los próximos 90 días.</p>'
-  }</div>`;
-}
-
-function renderDistribution(dist) {
-  if (!dist) return;
-  const target = byId('distribution-view');
-  const desc = byId('distribution-description');
-
-  if (state.distView === 'sector') {
-    const items = dist.por_sector || [];
-    const max = Math.max(...items.map((i) => i.empresas), 1);
-    desc.textContent = `Top sectores económicos sobre ${dist.total_activos} afiliados activos.`;
-    target.innerHTML = `<div class="bar-list">${
-      items
-        .map(
-          (i) =>
-            `<div class="bar-row"><span title="${escapeHtml(i.sector)}">${escapeHtml(i.sector)}</span><div class="track"><div class="fill" style="width:${(i.empresas / max) * 100}%"></div></div><b>${i.empresas} <small>(${i.porcentaje}%)</small></b></div>`
-        )
-        .join('') || '<p>Sin datos de sectores.</p>'
-    }</div>`;
-    return;
-  }
-
-  const items = state.distView === 'nivel' ? dist.por_nivel || [] : dist.por_tamano || [];
-  const labelKey = state.distView === 'nivel' ? 'nivel' : 'tamano';
-  const total = items.reduce((s, i) => s + i.empresas, 0);
-  const colors = ['#5000bf', '#ff5a00', '#2ea6a2', '#9f7aea', '#2b6cb0', '#d69e2e', '#718096'];
-  let offset = 0;
-  const slices = items
-    .map((item, idx) => {
-      const share = total ? item.empresas / total : 0;
-      const c = `<circle cx="50" cy="50" r="38" pathLength="100" stroke="${colors[idx % colors.length]}" stroke-dasharray="${share * 100} ${100 - share * 100}" stroke-dashoffset="${-offset}"><title>${escapeHtml(item[labelKey])}: ${item.empresas} (${item.porcentaje}%)</title></circle>`;
-      offset += share * 100;
-      return c;
-    })
-    .join('');
-
-  desc.textContent =
-    state.distView === 'nivel'
-      ? `Distribución por nivel de membresía (${total} activos).`
-      : `Distribución por tamaño empresarial (${total} activos).`;
-  target.innerHTML = total
-    ? `<div class="donut-layout"><svg class="donut" viewBox="0 0 100 100" role="img" aria-label="Distribución de activos"><circle class="donut-base" cx="50" cy="50" r="38"/>${slices}<text x="50" y="48">${total}</text><text x="50" y="59">activos</text></svg>
-       <ul class="legend">${items
-         .map(
-           (item, idx) =>
-             `<li><i style="background:${colors[idx % colors.length]}"></i><span>${escapeHtml(item[labelKey])}</span><b>${item.empresas} (${item.porcentaje}%)</b></li>`
-         )
-         .join('')}</ul></div>`
-    : '<p>Sin datos para estos filtros.</p>';
-}
-
-function renderEngagementRisk(data) {
-  state.lastRisk = data;
-  if (!data) return;
-  const res = data.resumen || {};
-  const total = res.total_activos || 0;
-  const sinP = res.sin_participacion || 0;
-  const mono = res.monocontacto || 0;
-  const multi = res.multicontacto || 0;
-
-  byId('avg-people-tag').textContent = `${res.promedio_personas_participantes || 0} pers./empresa`;
-  byId('engagement-health-bar').innerHTML = total
-    ? `<div class="stacked"><i class="detractor" style="width:${(sinP / total) * 100}%" title="Sin participación: ${sinP}"></i><i class="neutral" style="width:${(mono / total) * 100}%" title="Monocontacto: ${mono}"></i><i class="promoter" style="width:${(multi / total) * 100}%" title="Multicontacto: ${multi}"></i></div>
-       <div class="nps-legend">
-         <span><i class="detractor"></i>Pagan y no participan: <b>${sinP}</b> (${Math.round((sinP / total) * 100)}%)</span>
-         <span><i class="neutral"></i>Monocontacto (1 pers.): <b>${mono}</b> (${Math.round((mono / total) * 100)}%)</span>
-         <span><i class="promoter"></i>Multicontacto (2+ pers.): <b>${multi}</b> (${Math.round((multi / total) * 100)}%)</span>
-       </div>`
-    : '<p>Sin afiliados activos en el filtro actual.</p>';
-
-  const list =
-    state.riskTab === 'sin_participacion'
-      ? data.lista_sin_participacion || []
-      : data.lista_monocontacto || [];
-
-  byId('risk-body').innerHTML =
-    list
-      .map(
-        (item) =>
-          `<tr><td>${escapeHtml(item.id_empresa)}</td><td>${escapeHtml(item.kam_nombre || item.kam_id || '—')}</td><td>${escapeHtml(item.nivel_membresia || '—')}</td><td>${escapeHtml(item.sector_economico || '—')}</td><td>${escapeHtml(item.ciudad || '—')}</td><td>${escapeHtml(item.fecha_expiracion || '—')}</td><td>${item.personas_participantes}</td><td>${item.asistencias}</td></tr>`
-      )
-      .join('') || '<tr><td colspan="8">Sin empresas en este segmento.</td></tr>';
-
-  const kam = byId('kam-filter').value;
-  const level = byId('level-filter').value;
-  const sector = byId('sector-filter').value;
-  const country = byId('country-filter').value;
-  const qs = query({ kam_id: kam, nivel_membresia: level, sector, pais: country });
-  byId('export-risk-btn').href = `${endpoints.exportCsv}/${state.riskTab}${qs}`;
-}
-
 function renderSegments(data) {
   const rows = [
     ...data.vencimientos_proximos.slice(0, 2).map(
@@ -692,7 +750,7 @@ function renderSegments(data) {
 function updateActiveFiltersBadge() {
   const selects = [...document.querySelectorAll('.filters select')];
   const count = selects.filter((el) => el.value).length;
-  byId('active-filters-badge').textContent = count ? `${count} activos` : 'Sin filtros';
+  byId('active-filters-badge').textContent = String(count);
 }
 
 async function refresh() {
@@ -807,9 +865,9 @@ async function refresh() {
       ? satisfaction.reduce((sum, item) => sum + item.promedio_satisfaccion, 0) / satisfaction.length
       : 0;
     byId('satisfaction-score').textContent = activeSatisfaction.toFixed(2);
-    byId('filter-status').textContent = 'Actualizado';
+    byId('filter-status').textContent = 'En línea';
   } catch (error) {
-    byId('filter-status').textContent = 'Error al actualizar indicadores.';
+    byId('filter-status').textContent = 'Error al cargar';
   }
 }
 
@@ -820,7 +878,7 @@ async function initialize() {
       request(endpoints.affiliateFilters),
       request(endpoints.analyticsFilters),
     ]);
-    byId('data-date').textContent = `Corte: ${overview.fecha_referencia}`;
+    byId('data-date').textContent = `Corte ${overview.fecha_referencia}`;
     byId('active-count').textContent = overview.afiliados_activos;
     byId('service-rate').textContent = `${overview.porcentaje_afiliados_en_servicios}%`;
     byId('service-detail').textContent = `${overview.empresas_con_servicio} de ${overview.afiliados_activos} activos`;
@@ -845,9 +903,17 @@ async function initialize() {
     appendOptions(byId('modality-filter'), analyticsFilters.modalidades_evento || []);
     await refresh();
   } catch (error) {
-    byId('filter-status').textContent = 'No fue posible cargar el dashboard.';
+    byId('filter-status').textContent = 'Error al inicializar';
   }
 }
+
+/* EVENT LISTENERS */
+byId('toggle-filters-btn').addEventListener('click', () => {
+  const drawer = byId('filters-drawer');
+  const open = drawer.hidden;
+  drawer.hidden = !open;
+  byId('toggle-filters-btn').setAttribute('aria-expanded', String(open));
+});
 
 document.querySelectorAll('[data-tab]').forEach((btn) =>
   btn.addEventListener('click', () => setActiveTab(btn.dataset.tab))
@@ -924,16 +990,17 @@ document.querySelectorAll('[data-risk-tab]').forEach((btn) =>
   })
 );
 
-const storedTheme = localStorage.getItem('actho-theme');
-if (storedTheme === 'dark') {
-  document.documentElement.dataset.theme = 'dark';
-  byId('theme-toggle').textContent = 'Modo claro';
-}
-byId('theme-toggle').addEventListener('click', () => {
-  const dark = document.documentElement.dataset.theme !== 'dark';
+function applyTheme(dark) {
   document.documentElement.dataset.theme = dark ? 'dark' : '';
   localStorage.setItem('actho-theme', dark ? 'dark' : 'light');
-  byId('theme-toggle').textContent = dark ? 'Modo claro' : 'Modo oscuro';
+  byId('theme-icon').innerHTML = dark
+    ? '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'
+    : '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+}
+
+applyTheme(localStorage.getItem('actho-theme') === 'dark');
+byId('theme-toggle').addEventListener('click', () => {
+  applyTheme(document.documentElement.dataset.theme !== 'dark');
 });
 
 initialize();

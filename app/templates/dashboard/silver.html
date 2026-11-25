@@ -7,40 +7,68 @@
   <link rel="stylesheet" href="/static/css/silver-dashboard.css">
 </head>
 <body>
+  <div id="chart-tooltip" class="chart-tooltip" role="tooltip" hidden></div>
+
   <main class="dashboard-shell">
     <aside class="sidebar" aria-label="Navegación del dashboard">
-      <div class="sidebar-top">
-        <a class="brand" href="#overview" data-tab-target="overview" aria-label="ACTHO 360">act<span>h</span>o <small>360</small></a>
+      <div class="sidebar-brand">
+        <a class="brand" href="#overview" data-tab-target="overview" aria-label="ACTHO 360">
+          act<span>h</span>o <strong>360</strong>
+        </a>
         <span class="badge-silver">SILVER</span>
       </div>
-      <p class="sidebar-label">Vistas del tablero</p>
-      <nav class="tab-nav" role="tablist" aria-label="Secciones del tablero">
-        <button class="nav-link is-active" type="button" role="tab" aria-selected="true" data-tab="overview">Resumen ejecutivo</button>
-        <button class="nav-link" type="button" role="tab" aria-selected="false" data-tab="participation">Participación y audiencia</button>
-        <button class="nav-link" type="button" role="tab" aria-selected="false" data-tab="portfolio">Cartera, KAMs y pilares</button>
-        <button class="nav-link" type="button" role="tab" aria-selected="false" data-tab="experience">Satisfacción y temarios</button>
+
+      <div class="sidebar-divider" aria-hidden="true"></div>
+
+      <nav class="tab-nav" role="tablist" aria-label="Vistas del tablero">
+        <button class="nav-link is-active" type="button" role="tab" aria-selected="true" data-tab="overview" data-title="Resumen ejecutivo">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          <span>Resumen</span>
+        </button>
+        <button class="nav-link" type="button" role="tab" aria-selected="false" data-tab="participation" data-title="Participación y audiencia">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 6-7"/></svg>
+          <span>Participación</span>
+        </button>
+        <button class="nav-link" type="button" role="tab" aria-selected="false" data-tab="portfolio" data-title="Cartera, KAMs y pilares">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span>Cartera y KAMs</span>
+        </button>
+        <button class="nav-link" type="button" role="tab" aria-selected="false" data-tab="experience" data-title="Satisfacción y temarios">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          <span>Satisfacción</span>
+        </button>
       </nav>
-      <button id="theme-toggle" type="button" class="theme-toggle" aria-label="Cambiar modo de color">Modo oscuro</button>
+
+      <div class="sidebar-card">
+        <span class="sidebar-card-dot" aria-hidden="true"></span>
+        <strong>ACTHO 360 · Silver</strong>
+        <p>Datos verificados desde PostgreSQL Medallion en tiempo real.</p>
+      </div>
     </aside>
 
     <section class="dashboard-content">
-      <header class="hero" id="overview">
-        <div>
-          <p class="eyebrow">Tablero integral de afiliados · Capa Silver</p>
-          <h1>Comunidad ACTHO en movimiento</h1>
+      <header class="topbar" id="overview">
+        <div class="topbar-title">
+          <p class="breadcrumb">ACTHO 360 / <span>Capa Silver</span></p>
+          <h1 id="view-heading">Resumen ejecutivo</h1>
         </div>
-        <div class="hero-meta">
-          <time id="data-date">Cargando corte…</time>
-          <span id="filter-status" class="filter-status" aria-live="polite">Cargando datos…</span>
+
+        <div class="topbar-pill">
+          <button id="toggle-filters-btn" type="button" class="pill-btn" aria-expanded="false" aria-controls="filters-drawer">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+            <span>Filtros</span>
+            <em id="active-filters-badge" class="pill-count">0</em>
+          </button>
+          <time id="data-date" class="pill-date">Corte…</time>
+          <span id="filter-status" class="pill-status" aria-live="polite">Cargando…</span>
+          <button id="theme-toggle" type="button" class="icon-btn" aria-label="Cambiar modo de color" title="Cambiar tema">
+            <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          </button>
         </div>
       </header>
 
-      <details class="filters-box" id="filters-box">
-        <summary>
-          <span>Filtros del tablero</span>
-          <span id="active-filters-badge" class="tag">Sin filtros</span>
-        </summary>
-        <section class="filters" aria-label="Filtros del dashboard">
+      <section id="filters-drawer" class="filters-drawer" hidden aria-label="Filtros del tablero">
+        <div class="filters">
           <label>Periodo<select id="period-filter"><option value="">Todos los periodos</option></select></label>
           <label>Ejecutiva KAM<select id="kam-filter"><option value="">Todas las KAM</option></select></label>
           <label>Nivel<select id="level-filter"><option value="">Todos los niveles</option></select></label>
@@ -53,16 +81,75 @@
           <label>Línea 2027<select id="line-filter"><option value="">Todas las líneas</option></select></label>
           <label>Modalidad<select id="modality-filter"><option value="">Todas las modalidades</option></select></label>
           <button id="clear-filters" type="button" class="btn-reset">Limpiar filtros</button>
-        </section>
-      </details>
+        </div>
+      </section>
 
       <section class="metric-grid" aria-label="Métricas principales">
-        <article><span>Afiliados activos</span><strong id="active-count">—</strong><small>Membresías vigentes</small></article>
-        <article><span>En servicios</span><strong id="service-rate">—</strong><small id="service-detail">Afiliados con asistencia</small></article>
-        <article><span>Asistencias</span><strong id="attendance-count">—</strong><small id="attendance-detail">Afiliados y leads</small></article>
-        <article><span>Renovaciones</span><strong id="renewal-count">—</strong><small>Movimientos CRM</small></article>
-        <article><span>Satisfacción</span><strong id="satisfaction-score">—</strong><small>Promedio de 1 a 5</small></article>
-        <article class="warning"><span>Vencen en 90 días</span><strong id="expiring-count">—</strong><small>Prioridad comercial</small></article>
+        <article class="kpi-card">
+          <div class="kpi-icon violet" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg>
+          </div>
+          <div class="kpi-body">
+            <span>Afiliados activos</span>
+            <strong id="active-count">—</strong>
+            <small>Membresías vigentes</small>
+          </div>
+        </article>
+
+        <article class="kpi-card">
+          <div class="kpi-icon teal" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          </div>
+          <div class="kpi-body">
+            <span>En servicios</span>
+            <strong id="service-rate">—</strong>
+            <small id="service-detail">Afiliados con asistencia</small>
+          </div>
+        </article>
+
+        <article class="kpi-card">
+          <div class="kpi-icon indigo" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          </div>
+          <div class="kpi-body">
+            <span>Asistencias</span>
+            <strong id="attendance-count">—</strong>
+            <small id="attendance-detail">Afiliados y leads</small>
+          </div>
+        </article>
+
+        <article class="kpi-card">
+          <div class="kpi-icon cyan" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          </div>
+          <div class="kpi-body">
+            <span>Renovaciones</span>
+            <strong id="renewal-count">—</strong>
+            <small>Movimientos CRM</small>
+          </div>
+        </article>
+
+        <article class="kpi-card">
+          <div class="kpi-icon gold" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          </div>
+          <div class="kpi-body">
+            <span>Satisfacción</span>
+            <strong id="satisfaction-score">—</strong>
+            <small>Promedio escala 1–5</small>
+          </div>
+        </article>
+
+        <article class="kpi-card warning">
+          <div class="kpi-icon orange" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <div class="kpi-body">
+            <span>Vencen en 90 días</span>
+            <strong id="expiring-count">—</strong>
+            <small>Prioridad comercial</small>
+          </div>
+        </article>
       </section>
 
       <!-- VISTA 1: RESUMEN EJECUTIVO -->
@@ -85,7 +172,7 @@
               <div><p class="eyebrow">Oferta comercial 2027</p><h2>Afiliados vs. Leads por línea</h2></div>
               <span id="leads-ratio-tag" class="tag">—</span>
             </div>
-            <p class="chart-description">Distribución de asistentes afiliados (violeta) y leads no afiliados (naranja).</p>
+            <p class="chart-description">Participación de afiliados (violeta) frente a leads no afiliados (naranja).</p>
             <div id="overview-lines-view" class="chart-view" aria-live="polite"></div>
           </article>
 
@@ -106,7 +193,7 @@
 
           <article class="panel span-6">
             <div class="panel-head">
-              <div><p class="eyebrow">Composición de la base activa</p><h2>Distribución de afiliados</h2></div>
+              <div><p class="eyebrow">Composición base activa</p><h2>Distribución de afiliados</h2></div>
               <div class="chart-toggle">
                 <button data-dist-view="nivel" class="is-active" type="button">Nivel</button>
                 <button data-dist-view="sector" type="button">Sector</button>
@@ -117,18 +204,18 @@
             <div id="distribution-view" class="chart-view" aria-live="polite"></div>
           </article>
 
-          <article class="panel span-6">
+          <article class="panel span-7">
             <div class="panel-head">
               <div><p class="eyebrow">Gestión comercial</p><h2>Cartera y servicio por KAM</h2></div>
-              <span class="tag">Top ejecutivas</span>
+              <span class="tag soft-violet">Top ejecutivas</span>
             </div>
             <div id="overview-kams-chart" class="chart-view" aria-live="polite"></div>
           </article>
 
-          <article class="panel span-6">
+          <article class="panel span-5">
             <div class="panel-head">
               <div><p class="eyebrow">Acciones tempranas</p><h2>Qué hacer ahora</h2></div>
-              <span id="segments-tag" class="tag">Prioridad</span>
+              <span class="tag">Prioridad</span>
             </div>
             <ul id="segments-list" class="action-list" aria-live="polite"></ul>
           </article>
@@ -192,7 +279,7 @@
             <div class="panel-head">
               <div><p class="eyebrow">Riesgo de adopción · Silver</p><h2>Monocontacto y "Pagan pero no participan"</h2></div>
               <div class="panel-actions">
-                <span id="avg-people-tag" class="tag">—</span>
+                <span id="avg-people-tag" class="tag soft-violet">—</span>
                 <div class="chart-toggle">
                   <button data-risk-tab="sin_participacion" class="is-active" type="button">No participan</button>
                   <button data-risk-tab="monocontacto" type="button">Monocontacto</button>
@@ -216,7 +303,7 @@
               <div><p class="eyebrow">Cartera operativa</p><h2>Afiliados y vencimientos</h2></div>
               <div class="table-controls">
                 <input id="portfolio-search" type="search" placeholder="Buscar empresa, KAM o sector…" aria-label="Buscar en cartera">
-                <span id="portfolio-total" class="tag">—</span>
+                <span id="portfolio-total" class="tag soft-violet">—</span>
               </div>
             </div>
             <div class="table-wrap bounded">
@@ -237,7 +324,7 @@
           <article class="panel span-6" id="dimensions">
             <div class="panel-head">
               <div><p class="eyebrow">Calidad por dimensión</p><h2>Radar Presencial vs. Virtual</h2></div>
-              <span id="dimensions-tag" class="tag">Escala 1–5</span>
+              <span class="tag soft-violet">Escala 1–5</span>
             </div>
             <div id="dimensions-radar" class="chart-view" aria-live="polite"></div>
             <div id="dimensions-table" class="chart-view"></div>
