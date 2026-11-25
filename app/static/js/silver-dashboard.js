@@ -32,6 +32,7 @@ const state = {
   lastRisk: null,
   etlRunId: null,
   etlSelectedStep: null,
+  etlAutoTimer: null,
 };
 
 const byId = (id) => document.getElementById(id);
@@ -131,6 +132,14 @@ function setActiveTab(tabName) {
 
   if (isEtl) {
     loadEtlMonitor(state.etlRunId);
+    if (!state.etlAutoTimer) {
+      state.etlAutoTimer = setInterval(() => {
+        if (state.tab === 'etl') loadEtlMonitor(null);
+      }, 10000);
+    }
+  } else if (state.etlAutoTimer) {
+    clearInterval(state.etlAutoTimer);
+    state.etlAutoTimer = null;
   }
 }
 
@@ -210,7 +219,11 @@ async function loadEtlMonitor(runId = null) {
   try {
     const data = await request(endpoints.etlStatus + query({ run_id: runId }));
     const { flow, timing, progress, steps, history, quality_summary: qs } = data;
+    const prevRunId = state.etlRunId;
     state.etlRunId = timing.run_id;
+    if (prevRunId && timing.run_id && prevRunId !== timing.run_id) {
+      refresh();
+    }
 
     byId('etl-flow-name').textContent = flow.name;
     byId('etl-schedule-eyebrow').textContent = flow.schedule_label.toUpperCase();
@@ -223,9 +236,15 @@ async function loadEtlMonitor(runId = null) {
     const stKey = (timing.status || 'pending').toLowerCase();
     byId('etl-status-dot').className = `status-dot ${stKey}`;
     byId('etl-status-text').textContent = timing.status || 'PENDIENTE';
-    byId('etl-status-sub').textContent = timing.last_run_start
-      ? `Inició ${timing.last_run_start} · Programado por cron (${flow.schedule_cron})`
-      : 'Aún no hay ejecuciones registradas';
+    if (timing.status === 'FAILED' && flow.prefect_latest_message) {
+      byId('etl-status-sub').textContent = `Prefect (${flow.prefect_latest_run_name || 'última corrida'}): ${flow.prefect_latest_message.slice(0, 140)}`;
+    } else if (timing.status === 'RUNNING') {
+      byId('etl-status-sub').textContent = `Ejecutando flujo ${flow.prefect_latest_run_name || ''} en Prefect… (auto-actualización cada 10s)`;
+    } else {
+      byId('etl-status-sub').textContent = timing.last_run_start
+        ? `Inició ${timing.last_run_start} · Auto-actualización activa (10s)`
+        : 'Aún no hay ejecuciones registradas';
+    }
 
     byId('etl-progress-pct').textContent = `${progress.percent}%`;
     byId('etl-progress-fill').style.width = `${progress.percent}%`;

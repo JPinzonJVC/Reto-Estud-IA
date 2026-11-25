@@ -120,6 +120,7 @@ def ejecutar_pipeline_completo(
     *,
     persistir_en_db: bool = False,
     db_engine: Engine | None = None,
+    permitir_actualizacion_bronze: bool = False,
 ) -> dict[str, Any]:
     """Ejecuta el pipeline ETL completo con validación Bronze, Silver, Gold y PostgreSQL.
 
@@ -146,7 +147,12 @@ def ejecutar_pipeline_completo(
     run_id = f"ETL-ACTHO360-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     bitacora = BitacoraAuditoria(run_id=run_id, fecha_corte=cfg.fecha_corte)
 
-    bronze, df_hashes = ingerir_y_validar_bronze(cfg, run_id=run_id, ts_ingesta=ts_inicio)
+    bronze, df_hashes = ingerir_y_validar_bronze(
+        cfg,
+        run_id=run_id,
+        ts_ingesta=ts_inicio,
+        permitir_actualizacion_bronze=permitir_actualizacion_bronze,
+    )
     silver = procesar_capa_silver(bronze, cfg, bitacora)
     gold = _construir_capa_gold(bronze, silver, cfg, bitacora)
 

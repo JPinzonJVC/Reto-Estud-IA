@@ -458,24 +458,35 @@ class EtlMonitorService:
             else "No programada"
         )
 
-        # Verificar si Prefect reporta una corrida activa en este momento
-        live_running = next(
-            (
-                r
-                for r in prefect_live["flow_runs"]
-                if str(r.get("state_type", "")).upper() == "RUNNING"
-            ),
-            None,
+        # Verificar el estado más reciente reportado por Prefect Server
+        latest_prefect_run = prefect_live["flow_runs"][0] if prefect_live["flow_runs"] else None
+        prefect_state_type = (
+            str(latest_prefect_run.get("state_type", "")).upper()
+            if latest_prefect_run
+            else ""
         )
-        overall_status = (
-            "RUNNING"
-            if live_running
-            else (
-                "COMPLETED"
-                if ejec_actual and ejec_actual.estado_ejecucion == "EXITOSO"
-                else (ejec_actual.estado_ejecucion if ejec_actual else "PENDING")
-            )
+        prefect_state_msg = (
+            str(latest_prefect_run.get("state", {}).get("message") or "")
+            if latest_prefect_run and isinstance(latest_prefect_run.get("state"), dict)
+            else ""
         )
+        prefect_start_dt = (
+            _parse_ts(latest_prefect_run.get("start_time"), tz)
+            if latest_prefect_run
+            else None
+        )
+        prefect_is_newer = bool(
+            prefect_start_dt and (last_end_dt is None or prefect_start_dt > last_end_dt)
+        )
+
+        if prefect_state_type == "RUNNING":
+            overall_status = "RUNNING"
+        elif prefect_is_newer and prefect_state_type == "FAILED":
+            overall_status = "FAILED"
+        elif ejec_actual and ejec_actual.estado_ejecucion == "EXITOSO":
+            overall_status = "COMPLETED"
+        else:
+            overall_status = ejec_actual.estado_ejecucion if ejec_actual else "PENDING"
 
         dup_count = self.session.query(AuditRegistroDuplicado).count()
         rej_count = self.session.query(AuditRegistroRechazado).count()
@@ -490,6 +501,11 @@ class EtlMonitorService:
                 "prefect_connected": prefect_live["connected"],
                 "prefect_api_url": orch.prefect_api_url,
                 "prefect_live_runs": len(prefect_live["flow_runs"]),
+                "prefect_latest_run_name": (
+                    latest_prefect_run.get("name") if latest_prefect_run else None
+                ),
+                "prefect_latest_state": prefect_state_type or None,
+                "prefect_latest_message": prefect_state_msg or None,
             },
             "timing": {
                 "run_id": ejec_actual.id_ejecucion if ejec_actual else None,

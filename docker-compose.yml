@@ -19,6 +19,10 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres123}
       - POSTGRES_DB=${POSTGRES_DB:-estudia_db}
       - INPUT_DIR=/app/input
+      - PREFECT_API_URL=http://prefect-server:4200/api
+      - EDA_SCHEDULE_CRON=${EDA_SCHEDULE_CRON:-0 6 * * 1}
+      - EDA_SCHEDULE_TIMEZONE=${EDA_SCHEDULE_TIMEZONE:-America/Bogota}
+      - EDA_DEPLOYMENT_NAME=${EDA_DEPLOYMENT_NAME:-eda-medallion-weekly}
     volumes:
       - ./app:/app/app
       - ./input:/app/input

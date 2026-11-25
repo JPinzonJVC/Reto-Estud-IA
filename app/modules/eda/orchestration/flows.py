@@ -272,7 +272,11 @@ def run_medallion_etl_task(*, engine: Engine) -> dict[str, Any]:
         Exception: Si ocurre un error crítico en Bronze, Silver, Gold o carga DB.
 
     """
-    return ejecutar_pipeline_completo(persistir_en_db=True, db_engine=engine)
+    return ejecutar_pipeline_completo(
+        persistir_en_db=True,
+        db_engine=engine,
+        permitir_actualizacion_bronze=True,
+    )
 
 
 @task(

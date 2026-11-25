@@ -86,19 +86,30 @@ def guardar_tabla_medallion(
     return ruta_csv, ruta_parquet
 
 
-def _sincronizar_archivo_bronze(ruta_src: Path, ruta_dst: Path, nombre: str) -> str:
+def _sincronizar_archivo_bronze(
+    ruta_src: Path,
+    ruta_dst: Path,
+    nombre: str,
+    *,
+    permitir_actualizacion: bool = False,
+    run_id: str | None = None,
+) -> str:
     """Sincroniza un archivo hacia Bronze verificando su hash SHA-256.
 
     Args:
         ruta_src: Ruta del archivo fuente normalizado.
         ruta_dst: Ruta destino en la capa Bronze.
         nombre: Nombre lógico de la tabla fuente.
+        permitir_actualizacion: Si es True, archiva la versión previa en bronze/historial
+            y actualiza Bronze con la nueva versión proveniente de Drive/Zoho.
+        run_id: Identificador de ejecución para versionar el respaldo histórico.
 
     Returns:
         Acción aplicada sobre el archivo en Bronze.
 
     Raises:
-        RuntimeError: Si el archivo existente en Bronze difiere de la fuente.
+        RuntimeError: Si el archivo existente en Bronze difiere de la fuente y
+            permitir_actualizacion es False.
 
     """
     hash_src = calcular_sha256_archivo(ruta_src)
@@ -106,6 +117,14 @@ def _sincronizar_archivo_bronze(ruta_src: Path, ruta_dst: Path, nombre: str) -> 
         hash_dst = calcular_sha256_archivo(ruta_dst)
         if hash_dst == hash_src:
             return "CONSERVADO_SIN_SOBRESCRIBIR_HASH_IDENTICO"
+        if permitir_actualizacion:
+            hist_dir = ruta_dst.parent / "historial"
+            hist_dir.mkdir(parents=True, exist_ok=True)
+            tag = run_id or datetime.now().strftime("%Y%m%d-%H%M%S")
+            respaldo = hist_dir / f"{tag}_{ruta_dst.name}"
+            respaldo.write_bytes(ruta_dst.read_bytes())
+            ruta_dst.write_bytes(ruta_src.read_bytes())
+            return "ACTUALIZADO_NUEVA_VERSION_VERIFICADA"
         raise RuntimeError(
             f"Conflicto de integridad en Bronze para '{nombre}.csv': "
             f"el archivo existente en Bronze ({hash_dst[:12]}) difiere de "
@@ -119,6 +138,8 @@ def ingerir_y_validar_bronze(
     cfg: ConfiguracionETL,
     run_id: str | None = None,
     ts_ingesta: str | None = None,
+    *,
+    permitir_actualizacion_bronze: bool = False,
 ) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
     """Valida existencia e integridad de fuentes y registra hashes SHA-256 en Bronze.
 
@@ -160,7 +181,13 @@ def ingerir_y_validar_bronze(
             raise ValueError(f"Fuente obligatoria vacía (0 bytes): {ruta_src}")
 
         ruta_dst = cfg.bronze_dir / f"{nombre}.csv"
-        accion_bronze = _sincronizar_archivo_bronze(ruta_src, ruta_dst, nombre)
+        accion_bronze = _sincronizar_archivo_bronze(
+            ruta_src,
+            ruta_dst,
+            nombre,
+            permitir_actualizacion=permitir_actualizacion_bronze,
+            run_id=id_ejec,
+        )
         df_leido = pd.read_csv(ruta_dst, keep_default_na=True)
         bronze_dfs[nombre] = df_leido
         hashes_rows.append(
