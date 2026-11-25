@@ -90,6 +90,34 @@
 
           <article class="panel span-6">
             <div class="panel-head">
+              <div><p class="eyebrow">Vencimientos 30 / 60 / 90 días</p><h2>Curva de renovación</h2></div>
+              <div class="panel-actions">
+                <div class="chart-toggle">
+                  <button data-exp-view="global" class="is-active" type="button">Global</button>
+                  <button data-exp-view="kam" type="button">Por KAM</button>
+                </div>
+                <a id="export-expiring-btn" class="btn-csv" href="/retention/silver/export/vencimientos_90d" download>CSV</a>
+              </div>
+            </div>
+            <p id="expirations-description" class="chart-description"></p>
+            <div id="expirations-view" class="chart-view" aria-live="polite"></div>
+          </article>
+
+          <article class="panel span-6">
+            <div class="panel-head">
+              <div><p class="eyebrow">Composición de la base activa</p><h2>Distribución de afiliados</h2></div>
+              <div class="chart-toggle">
+                <button data-dist-view="nivel" class="is-active" type="button">Nivel</button>
+                <button data-dist-view="sector" type="button">Sector</button>
+                <button data-dist-view="tamano" type="button">Tamaño</button>
+              </div>
+            </div>
+            <p id="distribution-description" class="chart-description"></p>
+            <div id="distribution-view" class="chart-view" aria-live="polite"></div>
+          </article>
+
+          <article class="panel span-6">
+            <div class="panel-head">
               <div><p class="eyebrow">Gestión comercial</p><h2>Cartera y servicio por KAM</h2></div>
               <span class="tag">Top ejecutivas</span>
             </div>
@@ -157,6 +185,29 @@
             </div>
             <p id="pillars-description" class="chart-description"></p>
             <div id="pillars-view" class="chart-view" aria-live="polite"></div>
+          </article>
+
+          <article class="panel span-12" id="engagement-risk">
+            <div class="panel-head">
+              <div><p class="eyebrow">Riesgo de adopción · Silver</p><h2>Monocontacto y "Pagan pero no participan"</h2></div>
+              <div class="panel-actions">
+                <span id="avg-people-tag" class="tag">—</span>
+                <div class="chart-toggle">
+                  <button data-risk-tab="sin_participacion" class="is-active" type="button">No participan</button>
+                  <button data-risk-tab="monocontacto" type="button">Monocontacto</button>
+                </div>
+                <a id="export-risk-btn" class="btn-csv" href="/retention/silver/export/sin_participacion" download>Descargar CSV</a>
+              </div>
+            </div>
+            <div id="engagement-health-bar" class="chart-view"></div>
+            <div class="table-wrap bounded compact-table">
+              <table>
+                <thead>
+                  <tr><th>Empresa</th><th>Ejecutiva</th><th>Nivel</th><th>Sector</th><th>Ciudad</th><th>Vencimiento</th><th>Personas</th><th>Asistencias</th></tr>
+                </thead>
+                <tbody id="risk-body"></tbody>
+              </table>
+            </div>
           </article>
 
           <article class="panel span-12" id="portfolio">

@@ -6,11 +6,14 @@ const endpoints = {
   renewals: '/affiliates/silver/renewals',
   pillars: '/affiliates/silver/pillars',
   kams: '/affiliates/silver/kam-summary',
+  distribution: '/affiliates/silver/distribution',
   participation: '/analytics/silver/participation',
   audience: '/analytics/silver/audience',
   satisfaction: '/analytics/silver/satisfaction',
   dimensions: '/analytics/silver/satisfaction-dimensions',
   segments: '/retention/silver/segments',
+  engagementRisk: '/retention/silver/engagement-risk',
+  exportCsv: '/retention/silver/export',
 };
 
 const state = {
@@ -19,7 +22,12 @@ const state = {
   insight: 'trend',
   audience: 'roles',
   kamView: 'chart',
+  expView: 'global',
+  distView: 'nivel',
+  riskTab: 'sin_participacion',
   portfolioItems: [],
+  lastDistribution: null,
+  lastRisk: null,
 };
 
 const byId = (id) => document.getElementById(id);
@@ -509,6 +517,161 @@ function renderSatisfaction(items) {
       .join('') || '<tr><td colspan="4">Sin encuestas para este periodo.</td></tr>';
 }
 
+function renderExpirations(dist) {
+  state.lastDistribution = dist;
+  const target = byId('expirations-view');
+  const desc = byId('expirations-description');
+  if (!dist) return;
+
+  if (state.expView === 'global') {
+    const g = dist.vencimientos_global || {};
+    const buckets = [
+      { label: 'Vencidos', val: g.vencidos || 0, color: '#e53e3e' },
+      { label: '0–30 días', val: g.d0_30 || 0, color: '#ff5a00' },
+      { label: '31–60 días', val: g.d31_60 || 0, color: '#5000bf' },
+      { label: '61–90 días', val: g.d61_90 || 0, color: '#2ea6a2' },
+    ];
+    desc.textContent = `Total vencen en próximos 90 días: ${g.total_90d || 0} activos · Ya vencidos: ${g.vencidos || 0}.`;
+    const w = 440;
+    const h = 185;
+    const pad = { l: 34, r: 16, t: 20, b: 30 };
+    const plotW = w - pad.l - pad.r;
+    const plotH = h - pad.t - pad.b;
+    const maxV = Math.max(...buckets.map((b) => b.val), 1);
+    const colW = plotW / buckets.length;
+    const barW = Math.min(54, colW * 0.56);
+
+    const grid = [0, 0.5, 1]
+      .map((r) => {
+        const y = pad.t + plotH - r * plotH;
+        return `<line x1="${pad.l}" y1="${y}" x2="${w - pad.r}" y2="${y}" stroke="var(--line)" stroke-dasharray="3 3"/>
+                <text x="${pad.l - 6}" y="${y + 3}" text-anchor="end" font-size="9" fill="var(--sub)">${Math.round(maxV * r)}</text>`;
+      })
+      .join('');
+
+    const bars = buckets
+      .map((b, i) => {
+        const x = pad.l + i * colW + (colW - barW) / 2;
+        const bh = (b.val / maxV) * plotH;
+        const y = pad.t + plotH - bh;
+        return `<rect x="${x}" y="${y}" width="${barW}" height="${bh}" rx="6" fill="${b.color}"><title>${b.label}: ${b.val} empresas</title></rect>
+                <text x="${x + barW / 2}" y="${y - 5}" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--ink)">${b.val}</text>
+                <text x="${x + barW / 2}" y="${h - 10}" text-anchor="middle" font-size="10" fill="var(--sub)">${b.label}</text>`;
+      })
+      .join('');
+
+    target.innerHTML = `<svg class="svg-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="Curva de vencimientos 30, 60 y 90 días">${grid}${bars}</svg>`;
+    return;
+  }
+
+  const kams = (dist.vencimientos_por_kam || []).slice(0, 8);
+  const max = Math.max(...kams.map((k) => k.total_90d + k.vencidos), 1);
+  desc.textContent = 'Vencimientos por ejecutiva KAM: vencidos (rojo), 0–30d (naranja), 31–60d (violeta), 61–90d (turquesa).';
+  target.innerHTML = `<div class="bar-list">${
+    kams
+      .map((k) => {
+        const lbl = k.responsable_nombre && k.responsable_nombre !== 'Sin asignar' ? k.responsable_nombre : k.kam_id;
+        return `<div class="bar-row"><span title="${escapeHtml(lbl)}">${escapeHtml(lbl)}</span>
+          <div class="track stacked-track">
+            <div class="fill" style="width:${(k.vencidos / max) * 100}%;background:#e53e3e" title="Vencidos: ${k.vencidos}"></div>
+            <div class="fill lead" style="width:${(k.d0_30 / max) * 100}%" title="0-30d: ${k.d0_30}"></div>
+            <div class="fill" style="width:${(k.d31_60 / max) * 100}%;border-radius:0" title="31-60d: ${k.d31_60}"></div>
+            <div class="fill teal" style="width:${(k.d61_90 / max) * 100}%;border-radius:0" title="61-90d: ${k.d61_90}"></div>
+          </div>
+          <b>${k.total_90d}</b></div>`;
+      })
+      .join('') || '<p>Sin vencimientos en los próximos 90 días.</p>'
+  }</div>`;
+}
+
+function renderDistribution(dist) {
+  if (!dist) return;
+  const target = byId('distribution-view');
+  const desc = byId('distribution-description');
+
+  if (state.distView === 'sector') {
+    const items = dist.por_sector || [];
+    const max = Math.max(...items.map((i) => i.empresas), 1);
+    desc.textContent = `Top sectores económicos sobre ${dist.total_activos} afiliados activos.`;
+    target.innerHTML = `<div class="bar-list">${
+      items
+        .map(
+          (i) =>
+            `<div class="bar-row"><span title="${escapeHtml(i.sector)}">${escapeHtml(i.sector)}</span><div class="track"><div class="fill" style="width:${(i.empresas / max) * 100}%"></div></div><b>${i.empresas} <small>(${i.porcentaje}%)</small></b></div>`
+        )
+        .join('') || '<p>Sin datos de sectores.</p>'
+    }</div>`;
+    return;
+  }
+
+  const items = state.distView === 'nivel' ? dist.por_nivel || [] : dist.por_tamano || [];
+  const labelKey = state.distView === 'nivel' ? 'nivel' : 'tamano';
+  const total = items.reduce((s, i) => s + i.empresas, 0);
+  const colors = ['#5000bf', '#ff5a00', '#2ea6a2', '#9f7aea', '#2b6cb0', '#d69e2e', '#718096'];
+  let offset = 0;
+  const slices = items
+    .map((item, idx) => {
+      const share = total ? item.empresas / total : 0;
+      const c = `<circle cx="50" cy="50" r="38" pathLength="100" stroke="${colors[idx % colors.length]}" stroke-dasharray="${share * 100} ${100 - share * 100}" stroke-dashoffset="${-offset}"><title>${escapeHtml(item[labelKey])}: ${item.empresas} (${item.porcentaje}%)</title></circle>`;
+      offset += share * 100;
+      return c;
+    })
+    .join('');
+
+  desc.textContent =
+    state.distView === 'nivel'
+      ? `Distribución por nivel de membresía (${total} activos).`
+      : `Distribución por tamaño empresarial (${total} activos).`;
+  target.innerHTML = total
+    ? `<div class="donut-layout"><svg class="donut" viewBox="0 0 100 100" role="img" aria-label="Distribución de activos"><circle class="donut-base" cx="50" cy="50" r="38"/>${slices}<text x="50" y="48">${total}</text><text x="50" y="59">activos</text></svg>
+       <ul class="legend">${items
+         .map(
+           (item, idx) =>
+             `<li><i style="background:${colors[idx % colors.length]}"></i><span>${escapeHtml(item[labelKey])}</span><b>${item.empresas} (${item.porcentaje}%)</b></li>`
+         )
+         .join('')}</ul></div>`
+    : '<p>Sin datos para estos filtros.</p>';
+}
+
+function renderEngagementRisk(data) {
+  state.lastRisk = data;
+  if (!data) return;
+  const res = data.resumen || {};
+  const total = res.total_activos || 0;
+  const sinP = res.sin_participacion || 0;
+  const mono = res.monocontacto || 0;
+  const multi = res.multicontacto || 0;
+
+  byId('avg-people-tag').textContent = `${res.promedio_personas_participantes || 0} pers./empresa`;
+  byId('engagement-health-bar').innerHTML = total
+    ? `<div class="stacked"><i class="detractor" style="width:${(sinP / total) * 100}%" title="Sin participación: ${sinP}"></i><i class="neutral" style="width:${(mono / total) * 100}%" title="Monocontacto: ${mono}"></i><i class="promoter" style="width:${(multi / total) * 100}%" title="Multicontacto: ${multi}"></i></div>
+       <div class="nps-legend">
+         <span><i class="detractor"></i>Pagan y no participan: <b>${sinP}</b> (${Math.round((sinP / total) * 100)}%)</span>
+         <span><i class="neutral"></i>Monocontacto (1 pers.): <b>${mono}</b> (${Math.round((mono / total) * 100)}%)</span>
+         <span><i class="promoter"></i>Multicontacto (2+ pers.): <b>${multi}</b> (${Math.round((multi / total) * 100)}%)</span>
+       </div>`
+    : '<p>Sin afiliados activos en el filtro actual.</p>';
+
+  const list =
+    state.riskTab === 'sin_participacion'
+      ? data.lista_sin_participacion || []
+      : data.lista_monocontacto || [];
+
+  byId('risk-body').innerHTML =
+    list
+      .map(
+        (item) =>
+          `<tr><td>${escapeHtml(item.id_empresa)}</td><td>${escapeHtml(item.kam_nombre || item.kam_id || '—')}</td><td>${escapeHtml(item.nivel_membresia || '—')}</td><td>${escapeHtml(item.sector_economico || '—')}</td><td>${escapeHtml(item.ciudad || '—')}</td><td>${escapeHtml(item.fecha_expiracion || '—')}</td><td>${item.personas_participantes}</td><td>${item.asistencias}</td></tr>`
+      )
+      .join('') || '<tr><td colspan="8">Sin empresas en este segmento.</td></tr>';
+
+  const kam = byId('kam-filter').value;
+  const level = byId('level-filter').value;
+  const sector = byId('sector-filter').value;
+  const qs = query({ kam_id: kam, nivel_membresia: level, sector });
+  byId('export-risk-btn').href = `${endpoints.exportCsv}/${state.riskTab}${qs}`;
+}
+
 function renderSegments(data) {
   const rows = [
     ...data.vencimientos_proximos.slice(0, 2).map(
@@ -554,6 +717,8 @@ async function refresh() {
       audience,
       pillars,
       kams,
+      distribution,
+      engagementRisk,
       satisfaction,
       dimensions,
       segments,
@@ -594,6 +759,17 @@ async function refresh() {
       ),
       request(endpoints.pillars + query({ kam_id: kam, nivel_membresia: level, sector })),
       request(endpoints.kams),
+      request(
+        endpoints.distribution +
+          query({
+            kam_id: kam,
+            nivel_membresia: level,
+            sector,
+            tamano_empresa: size,
+            ciudad: city,
+          })
+      ),
+      request(endpoints.engagementRisk + query({ kam_id: kam, nivel_membresia: level, sector })),
       request(endpoints.satisfaction + query(dates)),
       request(endpoints.dimensions + query(dates)),
       request(endpoints.segments),
@@ -605,6 +781,9 @@ async function refresh() {
     renderOverviewLines(audience);
     renderPillars(pillars);
     renderKamsSection(kams);
+    renderExpirations(distribution);
+    renderDistribution(distribution);
+    renderEngagementRisk(engagementRisk);
     renderSatisfaction(satisfaction);
     renderDimensionsRadar(dimensions);
     renderTrendAreaChart(participation, satisfaction);
@@ -708,6 +887,30 @@ document.querySelectorAll('[data-kam-view]').forEach((btn) =>
     btn.classList.add('is-active');
     state.kamView = btn.dataset.kamView;
     refresh();
+  })
+);
+document.querySelectorAll('[data-exp-view]').forEach((btn) =>
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-exp-view]').forEach((b) => b.classList.remove('is-active'));
+    btn.classList.add('is-active');
+    state.expView = btn.dataset.expView;
+    renderExpirations(state.lastDistribution);
+  })
+);
+document.querySelectorAll('[data-dist-view]').forEach((btn) =>
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-dist-view]').forEach((b) => b.classList.remove('is-active'));
+    btn.classList.add('is-active');
+    state.distView = btn.dataset.distView;
+    renderDistribution(state.lastDistribution);
+  })
+);
+document.querySelectorAll('[data-risk-tab]').forEach((btn) =>
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-risk-tab]').forEach((b) => b.classList.remove('is-active'));
+    btn.classList.add('is-active');
+    state.riskTab = btn.dataset.riskTab;
+    renderEngagementRisk(state.lastRisk);
   })
 );
 
