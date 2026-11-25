@@ -76,11 +76,36 @@ class DashboardSilverRepository:
             self.session.query(
                 func.count(func.distinct(SilverFactAsistencia.id_empresa))
             )
+            .join(
+                SilverDimEmpresa,
+                SilverDimEmpresa.id_empresa == SilverFactAsistencia.id_empresa,
+            )
+            .filter(
+                SilverFactAsistencia.id_empresa.isnot(None),
+                SilverDimEmpresa.es_membresia_activa.is_(True),
+            )
+            .scalar()
+            or 0
+        )
+        empresas_unicas_asistentes = (
+            self.session.query(
+                func.count(func.distinct(SilverFactAsistencia.id_empresa))
+            )
             .filter(SilverFactAsistencia.id_empresa.isnot(None))
             .scalar()
             or 0
         )
         total_asistencias = self.session.query(SilverFactAsistencia).count()
+        asistentes_afiliados = (
+            self.session.query(SilverFactAsistencia)
+            .filter(SilverFactAsistencia.es_afiliado.is_(True))
+            .count()
+        )
+        asistentes_no_afiliados = (
+            self.session.query(SilverFactAsistencia)
+            .filter(SilverFactAsistencia.es_afiliado.is_(False))
+            .count()
+        )
         total_respuestas = self.session.query(SilverFactEncuestaSatisfaccion).count()
         satisfaccion = (
             self.session.query(
@@ -94,6 +119,7 @@ class DashboardSilverRepository:
             "afiliados_activos": int(afiliados_activos),
             "vencimientos_proximos": vencimientos,
             "empresas_con_servicio": int(empresas_con_servicio),
+            "empresas_unicas_asistentes": int(empresas_unicas_asistentes),
             "porcentaje_afiliados_en_servicios": round(
                 (int(empresas_con_servicio) / afiliados_activos) * 100
                 if afiliados_activos
@@ -101,6 +127,8 @@ class DashboardSilverRepository:
                 2,
             ),
             "total_asistencias": int(total_asistencias),
+            "asistentes_afiliados": int(asistentes_afiliados),
+            "asistentes_no_afiliados": int(asistentes_no_afiliados),
             "total_respuestas_satisfaccion": int(total_respuestas),
             "promedio_satisfaccion_1_5": round(float(satisfaccion), 2),
             "capa_datos": "silver",
@@ -177,8 +205,16 @@ class DashboardSilverRepository:
         fecha_hasta: str | None,
         kam_id: str | None,
         ciudad_evento: str | None,
+        linea_oferta: str | None = None,
+        modalidad: str | None = None,
     ) -> list[dict[str, Any]]:
         """Agrupa participación por evento, línea y modalidad."""
+        afiliados = func.sum(
+            case((SilverFactAsistencia.es_afiliado.is_(True), 1), else_=0)
+        )
+        no_afiliados = func.sum(
+            case((SilverFactAsistencia.es_afiliado.is_(False), 1), else_=0)
+        )
         query = self.session.query(
             SilverDimEvento.id_evento.label("id_evento"),
             SilverDimEvento.nombre_evento.label("nombre_evento"),
@@ -186,6 +222,8 @@ class DashboardSilverRepository:
             SilverDimEvento.modalidad.label("modalidad"),
             SilverDimEvento.fecha_evento.label("fecha_evento"),
             func.count(SilverFactAsistencia.id_asistencia).label("asistencias"),
+            afiliados.label("asistentes_afiliados"),
+            no_afiliados.label("asistentes_no_afiliados"),
             func.count(func.distinct(SilverFactAsistencia.id_empresa)).label(
                 "empresas_distintas"
             ),
@@ -204,6 +242,10 @@ class DashboardSilverRepository:
             query = query.filter(SilverFactAsistencia.kam_id == kam_id)
         if ciudad_evento:
             query = query.filter(SilverFactAsistencia.ciudad_evento == ciudad_evento)
+        if linea_oferta:
+            query = query.filter(SilverDimEvento.linea_oferta_2027 == linea_oferta)
+        if modalidad:
+            query = query.filter(SilverDimEvento.modalidad == modalidad)
         rows = (
             query.group_by(
                 SilverDimEvento.id_evento,
@@ -215,7 +257,17 @@ class DashboardSilverRepository:
             .order_by(SilverDimEvento.fecha_evento.desc())
             .all()
         )
-        return [dict(row._mapping) for row in rows]
+        return [
+            {
+                **dict(row._mapping),
+                "asistencias": int(row.asistencias or 0),
+                "asistentes_afiliados": int(row.asistentes_afiliados or 0),
+                "asistentes_no_afiliados": int(row.asistentes_no_afiliados or 0),
+                "empresas_distintas": int(row.empresas_distintas or 0),
+                "personas_distintas": int(row.personas_distintas or 0),
+            }
+            for row in rows
+        ]
 
     def obtener_satisfaccion(
         self, *, fecha_desde: str | None, fecha_hasta: str | None
@@ -400,3 +452,339 @@ class DashboardSilverRepository:
                 for row in no_afiliados
             ],
         }
+
+    def obtener_audiencia(
+        self,
+        *,
+        fecha_desde: str | None = None,
+        fecha_hasta: str | None = None,
+        kam_id: str | None = None,
+        ciudad_evento: str | None = None,
+        linea_oferta: str | None = None,
+        modalidad: str | None = None,
+    ) -> dict[str, Any]:
+        """Desglosa asistencias Silver por cargo, línea 2027 y modalidad."""
+        base = self.session.query(SilverFactAsistencia).join(
+            SilverDimEvento,
+            SilverDimEvento.id_evento == SilverFactAsistencia.id_evento,
+        )
+        if fecha_desde:
+            base = base.filter(SilverFactAsistencia.fecha_evento >= fecha_desde)
+        if fecha_hasta:
+            base = base.filter(SilverFactAsistencia.fecha_evento <= fecha_hasta)
+        if kam_id:
+            base = base.filter(SilverFactAsistencia.kam_id == kam_id)
+        if ciudad_evento:
+            base = base.filter(SilverFactAsistencia.ciudad_evento == ciudad_evento)
+        if linea_oferta:
+            base = base.filter(SilverDimEvento.linea_oferta_2027 == linea_oferta)
+        if modalidad:
+            base = base.filter(SilverDimEvento.modalidad == modalidad)
+
+        afiliados_col = func.sum(
+            case((SilverFactAsistencia.es_afiliado.is_(True), 1), else_=0)
+        )
+        no_afiliados_col = func.sum(
+            case((SilverFactAsistencia.es_afiliado.is_(False), 1), else_=0)
+        )
+
+        cargos_rows = (
+            base.with_entities(
+                func.coalesce(SilverFactAsistencia.nivel_cargo, "Sin dato").label(
+                    "nivel_cargo"
+                ),
+                func.count(SilverFactAsistencia.id_asistencia).label("asistencias"),
+            )
+            .group_by(func.coalesce(SilverFactAsistencia.nivel_cargo, "Sin dato"))
+            .order_by(func.count(SilverFactAsistencia.id_asistencia).desc())
+            .all()
+        )
+        lineas_rows = (
+            base.with_entities(
+                func.coalesce(SilverDimEvento.linea_oferta_2027, "Sin línea").label(
+                    "linea_oferta"
+                ),
+                func.count(SilverFactAsistencia.id_asistencia).label("asistencias"),
+                afiliados_col.label("afiliados"),
+                no_afiliados_col.label("no_afiliados"),
+            )
+            .group_by(func.coalesce(SilverDimEvento.linea_oferta_2027, "Sin línea"))
+            .order_by(func.count(SilverFactAsistencia.id_asistencia).desc())
+            .all()
+        )
+        modalidades_rows = (
+            base.with_entities(
+                func.coalesce(SilverDimEvento.modalidad, "Sin modalidad").label(
+                    "modalidad"
+                ),
+                func.count(SilverFactAsistencia.id_asistencia).label("asistencias"),
+                afiliados_col.label("afiliados"),
+                no_afiliados_col.label("no_afiliados"),
+            )
+            .group_by(func.coalesce(SilverDimEvento.modalidad, "Sin modalidad"))
+            .order_by(func.count(SilverFactAsistencia.id_asistencia).desc())
+            .all()
+        )
+        return {
+            "niveles_cargo": [
+                {
+                    "nivel_cargo": str(row.nivel_cargo),
+                    "asistencias": int(row.asistencias or 0),
+                }
+                for row in cargos_rows
+            ],
+            "lineas_oferta": [
+                {
+                    "linea_oferta": str(row.linea_oferta),
+                    "asistencias": int(row.asistencias or 0),
+                    "afiliados": int(row.afiliados or 0),
+                    "no_afiliados": int(row.no_afiliados or 0),
+                }
+                for row in lineas_rows
+            ],
+            "modalidades": [
+                {
+                    "modalidad": str(row.modalidad),
+                    "asistencias": int(row.asistencias or 0),
+                    "afiliados": int(row.afiliados or 0),
+                    "no_afiliados": int(row.no_afiliados or 0),
+                }
+                for row in modalidades_rows
+            ],
+        }
+
+    def obtener_dimensiones_satisfaccion(
+        self,
+        *,
+        fecha_desde: str | None = None,
+        fecha_hasta: str | None = None,
+    ) -> dict[str, Any]:
+        """Calcula promedios de las 4 dimensiones Likert y temarios sugeridos."""
+        base = self.session.query(SilverFactEncuestaSatisfaccion)
+        if fecha_desde:
+            base = base.filter(
+                SilverFactEncuestaSatisfaccion.fecha_encuesta >= fecha_desde
+            )
+        if fecha_hasta:
+            base = base.filter(
+                SilverFactEncuestaSatisfaccion.fecha_encuesta <= fecha_hasta
+            )
+
+        modalidad_expr = func.coalesce(
+            SilverFactEncuestaSatisfaccion.modalidad_encuesta, "Sin modalidad"
+        )
+        rows = (
+            base.with_entities(
+                modalidad_expr.label("modalidad"),
+                func.count(SilverFactEncuestaSatisfaccion.id_respuesta).label(
+                    "respuestas"
+                ),
+                func.avg(
+                    SilverFactEncuestaSatisfaccion.calif_locacion_o_plataforma
+                ).label("locacion_plataforma"),
+                func.avg(
+                    SilverFactEncuestaSatisfaccion.calif_convocatoria_publicidad
+                ).label("convocatoria_publicidad"),
+                func.avg(SilverFactEncuestaSatisfaccion.calif_conferencistas).label(
+                    "conferencistas"
+                ),
+                func.avg(SilverFactEncuestaSatisfaccion.calif_relevancia_temas).label(
+                    "relevancia_temas"
+                ),
+                func.avg(SilverFactEncuestaSatisfaccion.promedio_satisfaccion).label(
+                    "promedio_general"
+                ),
+            )
+            .group_by(modalidad_expr)
+            .order_by(modalidad_expr)
+            .all()
+        )
+        temarios_query = base.filter(
+            SilverFactEncuestaSatisfaccion.temarios_sugeridos.isnot(None),
+            SilverFactEncuestaSatisfaccion.temarios_sugeridos != "",
+        )
+        total_con_temarios = temarios_query.count()
+        temarios_recientes = [
+            {
+                "fecha": row.fecha_encuesta,
+                "modalidad": row.modalidad_encuesta,
+                "temario": row.temarios_sugeridos,
+            }
+            for row in temarios_query.order_by(
+                SilverFactEncuestaSatisfaccion.fecha_encuesta.desc()
+            )
+            .limit(12)
+            .all()
+        ]
+        return {
+            "por_modalidad": [
+                {
+                    "modalidad": str(row.modalidad),
+                    "respuestas": int(row.respuestas or 0),
+                    "locacion_plataforma": round(
+                        float(row.locacion_plataforma or 0), 2
+                    ),
+                    "convocatoria_publicidad": round(
+                        float(row.convocatoria_publicidad or 0), 2
+                    ),
+                    "conferencistas": round(float(row.conferencistas or 0), 2),
+                    "relevancia_temas": round(float(row.relevancia_temas or 0), 2),
+                    "promedio_general": round(float(row.promedio_general or 0), 2),
+                }
+                for row in rows
+            ],
+            "total_con_temarios": int(total_con_temarios),
+            "temarios_recientes": temarios_recientes,
+        }
+
+    def obtener_pilares_y_comunidades(
+        self,
+        *,
+        kam_id: str | None = None,
+        nivel_membresia: str | None = None,
+        sector: str | None = None,
+    ) -> dict[str, Any]:
+        """Calcula adopción de pilares estratégicos y diversidad en activos Silver."""
+        query = self.session.query(SilverDimEmpresa).filter(
+            SilverDimEmpresa.es_membresia_activa.is_(True)
+        )
+        if kam_id:
+            query = query.filter(SilverDimEmpresa.kam_id == kam_id)
+        if nivel_membresia:
+            query = query.filter(SilverDimEmpresa.nivel_membresia == nivel_membresia)
+        if sector:
+            query = query.filter(SilverDimEmpresa.sector_economico == sector)
+
+        total_activos = query.count()
+        campos = (
+            ("vinculado_comunidades", "Vinculado a comunidades"),
+            ("pilar_hr_estrategico", "HR Estratégico"),
+            ("pilar_mas_que_salario", "Más que un Salario"),
+            ("pilar_talento_que_elige", "Talento que Elige"),
+            ("pilar_gente_que_crece", "Gente que Crece"),
+            ("comunidad_mujeres_hr", "Comunidad Mujeres HR"),
+            ("es_influenciador", "Influenciador"),
+        )
+        items: list[dict[str, Any]] = []
+        for col_name, label in campos:
+            col = getattr(SilverDimEmpresa, col_name)
+            cnt = query.filter(col.is_(True)).count()
+            items.append(
+                {
+                    "clave": col_name,
+                    "nombre": label,
+                    "empresas": int(cnt),
+                    "porcentaje": round(
+                        (cnt / total_activos) * 100 if total_activos else 0.0, 1
+                    ),
+                }
+            )
+        avg_mujeres = (
+            query.with_entities(func.avg(SilverDimEmpresa.porcentaje_mujeres_num))
+            .filter(SilverDimEmpresa.porcentaje_mujeres_num.isnot(None))
+            .scalar()
+        )
+        n_mujeres = query.filter(
+            SilverDimEmpresa.porcentaje_mujeres_num.isnot(None)
+        ).count()
+        return {
+            "total_activos": int(total_activos),
+            "pilares": items,
+            "porcentaje_mujeres_promedio": (
+                round(float(avg_mujeres), 1) if avg_mujeres is not None else None
+            ),
+            "empresas_con_dato_mujeres": int(n_mujeres),
+        }
+
+    def obtener_resumen_kams(self, fecha_referencia: date) -> list[dict[str, Any]]:
+        """Construye comparativa de cartera, participación y renovaciones por KAM."""
+        reference = fecha_referencia.isoformat()
+        cutoff = (fecha_referencia + timedelta(days=90)).isoformat()
+
+        kams = self.session.query(SilverDimKam).order_by(SilverDimKam.kam_id).all()
+        activos_map = dict(
+            self.session.query(
+                SilverDimEmpresa.kam_id, func.count(SilverDimEmpresa.id_empresa)
+            )
+            .filter(SilverDimEmpresa.es_membresia_activa.is_(True))
+            .group_by(SilverDimEmpresa.kam_id)
+            .all()
+        )
+        vencen_map = dict(
+            self.session.query(
+                SilverDimEmpresa.kam_id, func.count(SilverDimEmpresa.id_empresa)
+            )
+            .filter(
+                SilverDimEmpresa.es_membresia_activa.is_(True),
+                SilverDimEmpresa.fecha_expiracion >= reference,
+                SilverDimEmpresa.fecha_expiracion <= cutoff,
+            )
+            .group_by(SilverDimEmpresa.kam_id)
+            .all()
+        )
+        emp_asist_map = dict(
+            self.session.query(
+                SilverDimEmpresa.kam_id,
+                func.count(func.distinct(SilverFactAsistencia.id_empresa)),
+            )
+            .join(
+                SilverFactAsistencia,
+                SilverFactAsistencia.id_empresa == SilverDimEmpresa.id_empresa,
+            )
+            .filter(SilverDimEmpresa.es_membresia_activa.is_(True))
+            .group_by(SilverDimEmpresa.kam_id)
+            .all()
+        )
+        asist_map = dict(
+            self.session.query(
+                SilverFactAsistencia.kam_id,
+                func.count(SilverFactAsistencia.id_asistencia),
+            )
+            .group_by(SilverFactAsistencia.kam_id)
+            .all()
+        )
+        mov_rows = (
+            self.session.query(
+                SilverFactMovimientoCrm.kam_id,
+                func.sum(
+                    case((SilverFactMovimientoCrm.es_renovacion.is_(True), 1), else_=0)
+                ).label("renovaciones"),
+                func.sum(
+                    case(
+                        (
+                            SilverFactMovimientoCrm.es_cierre_facturado.is_(True),
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ).label("cierres"),
+            )
+            .group_by(SilverFactMovimientoCrm.kam_id)
+            .all()
+        )
+        mov_map = {
+            row.kam_id: (int(row.renovaciones or 0), int(row.cierres or 0))
+            for row in mov_rows
+        }
+
+        resumen: list[dict[str, Any]] = []
+        for kam in kams:
+            act = int(activos_map.get(kam.kam_id, 0))
+            con_asist = int(emp_asist_map.get(kam.kam_id, 0))
+            renov, cierres = mov_map.get(kam.kam_id, (0, 0))
+            resumen.append(
+                {
+                    "kam_id": kam.kam_id,
+                    "responsable_nombre": kam.responsable_nombre,
+                    "afiliados_activos": act,
+                    "vencen_90d": int(vencen_map.get(kam.kam_id, 0)),
+                    "empresas_con_asistencia": con_asist,
+                    "porcentaje_en_servicios": round(
+                        (con_asist / act) * 100 if act else 0.0, 1
+                    ),
+                    "asistencias_totales": int(asist_map.get(kam.kam_id, 0)),
+                    "renovaciones": renov,
+                    "cierres_facturados": cierres,
+                }
+            )
+        return sorted(resumen, key=lambda item: item["afiliados_activos"], reverse=True)

@@ -1,5 +1,6 @@
 """Enrutador para endpoints del módulo de afiliados."""
 
+from datetime import date
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
@@ -136,3 +137,47 @@ def get_silver_renewals(
         periodo_hasta=periodo_hasta,
         kam_id=kam_id,
     )
+
+
+@affiliates_router.get("/silver/pillars")
+def get_silver_pillars(
+    kam_id: str | None = None,
+    nivel_membresia: str | None = None,
+    sector: str | None = None,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Retorna adopción de pilares estratégicos, comunidades y diversidad Silver.
+
+    Args:
+        kam_id: Identificador opcional de la ejecutiva KAM.
+        nivel_membresia: Nivel de membresía opcional.
+        sector: Sector económico opcional.
+        db: Sesión PostgreSQL inyectada mediante ``Depends(get_db)``.
+
+    Returns:
+        Adopción de pilares y promedio de participación femenina en activos.
+
+    """
+    return DashboardSilverRepository(db).obtener_pilares_y_comunidades(
+        kam_id=kam_id,
+        nivel_membresia=nivel_membresia,
+        sector=sector,
+    )
+
+
+@affiliates_router.get("/silver/kam-summary")
+def get_silver_kam_summary(
+    fecha_referencia: date = Query(default_factory=date.today),
+    db: Session = Depends(get_db),
+) -> list[dict[str, Any]]:
+    """Retorna comparativa de cartera, participación y renovaciones por KAM.
+
+    Args:
+        fecha_referencia: Fecha base para calcular vencimientos a 90 días.
+        db: Sesión PostgreSQL inyectada mediante ``Depends(get_db)``.
+
+    Returns:
+        Lista ordenada de métricas comerciales y de servicio por ejecutiva KAM.
+
+    """
+    return DashboardSilverRepository(db).obtener_resumen_kams(fecha_referencia)
