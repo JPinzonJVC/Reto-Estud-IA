@@ -13,8 +13,11 @@
       <p>Tablero de afiliados</p>
       <nav>
         <a class="nav-link is-active" href="#overview">Resumen</a>
-        <a class="nav-link" href="#portfolio">Cartera</a>
         <a class="nav-link" href="#participation">Participación</a>
+        <a class="nav-link" href="#audience">Audiencia</a>
+        <a class="nav-link" href="#pillars">Pilares</a>
+        <a class="nav-link" href="#kams">Ejecutivas KAM</a>
+        <a class="nav-link" href="#portfolio">Cartera</a>
         <a class="nav-link" href="#experience">Experiencias</a>
         <a class="nav-link" href="#segments">Segmentos</a>
       </nav>
@@ -22,7 +25,7 @@
     </aside>
     <section class="dashboard-content">
       <header class="hero" id="overview">
-        <div><p class="eyebrow">Tablero integral de afiliados</p><h1>Comunidad ACTHO en movimiento</h1><p>Afiliación, participación y experiencia con datos de la capa Silver.</p></div>
+        <div><p class="eyebrow">Tablero integral de afiliados</p><h1>Comunidad ACTHO en movimiento</h1><p>Afiliación, participación, audiencia, pilares y experiencia con datos de la capa Silver.</p></div>
         <time id="data-date">Cargando corte…</time>
       </header>
       <section class="filters" aria-label="Filtros del dashboard">
@@ -34,22 +37,35 @@
         <label>Estado<select id="membership-status-filter"><option value="">Todos los estados</option></select></label>
         <label>Ciudad de empresa<select id="city-filter"><option value="">Todas las ciudades</option></select></label>
         <label>Ciudad de evento<select id="event-city-filter"><option value="">Todas las ciudades</option></select></label>
+        <label>Línea 2027<select id="line-filter"><option value="">Todas las líneas</option></select></label>
+        <label>Modalidad<select id="modality-filter"><option value="">Todas las modalidades</option></select></label>
         <button id="clear-filters" type="button">Limpiar filtros</button>
       </section>
       <p id="filter-status" class="filter-status" aria-live="polite">Cargando datos…</p>
       <section class="metric-grid" aria-label="Métricas principales">
         <article><span>Afiliados activos</span><strong id="active-count">—</strong><small>Membresías vigentes</small></article>
         <article><span>Renovaciones</span><strong id="renewal-count">—</strong><small>Movimientos CRM</small></article>
-        <article><span>En servicios</span><strong id="service-rate">—</strong><small>Con asistencia registrada</small></article>
-        <article><span>Asistencias</span><strong id="attendance-count">—</strong><small>En el periodo elegido</small></article>
+        <article><span>En servicios</span><strong id="service-rate">—</strong><small id="service-detail">Afiliados con asistencia</small></article>
+        <article><span>Asistencias</span><strong id="attendance-count">—</strong><small id="attendance-detail">En el periodo elegido</small></article>
         <article><span>Satisfacción</span><strong id="satisfaction-score">—</strong><small>Promedio de 1 a 5</small></article>
         <article class="warning"><span>Vencen en 90 días</span><strong id="expiring-count">—</strong><small>Prioridad comercial</small></article>
       </section>
       <section class="content-grid">
         <article class="panel" id="participation"><div class="panel-head"><div><p class="eyebrow">Participación</p><h2>Convocatoria por evento</h2></div><div class="chart-toggle"><button data-chart="bars" class="is-active" type="button">Barras</button><button data-chart="donut" type="button">Torta</button><button data-chart="table" type="button">Tabla</button></div></div><div id="participation-view" class="chart-view" aria-live="polite"></div></article>
         <article class="panel" id="segments"><p class="eyebrow">Acciones sugeridas</p><h2>Qué hacer ahora</h2><ul id="segments-list" class="action-list" aria-live="polite"></ul></article>
+
+        <article class="panel" id="audience"><div class="panel-head"><div><p class="eyebrow">Audiencia y oferta 2027</p><h2>Perfil de asistentes</h2></div><div class="chart-toggle"><button data-audience="roles" class="is-active" type="button">Cargos</button><button data-audience="lines" type="button">Líneas 2027</button><button data-audience="modalities" type="button">Modalidad</button></div></div><p id="audience-description" class="chart-description"></p><div id="audience-view" class="chart-view" aria-live="polite"></div></article>
+
+        <article class="panel" id="pillars"><div class="panel-head"><div><p class="eyebrow">Comunidad y diversidad</p><h2>Pilares estratégicos</h2></div><span id="women-share" class="tag">—</span></div><p id="pillars-description" class="chart-description"></p><div id="pillars-view" class="chart-view" aria-live="polite"></div></article>
+
+        <article class="panel wide" id="kams"><div class="panel-head"><div><p class="eyebrow">Gestión comercial</p><h2>Desempeño por ejecutiva KAM</h2></div><span id="kams-total" class="tag">—</span></div><div class="table-wrap"><table><thead><tr><th>KAM</th><th>Ejecutiva</th><th>Activos</th><th>Vencen 90d</th><th>Con asistencia</th><th>% Servicios</th><th>Asistencias</th><th>Renovaciones</th></tr></thead><tbody id="kams-body"></tbody></table></div></article>
+
         <article class="panel wide" id="portfolio"><div class="panel-head"><div><p class="eyebrow">Cartera operativa</p><h2>Afiliados y vencimientos</h2></div><span id="portfolio-total" class="tag">—</span></div><div class="table-wrap"><table><thead><tr><th>Empresa</th><th>Ejecutiva</th><th>Nivel</th><th>Sector</th><th>Tamaño</th><th>Estado</th><th>Ciudad empresa</th><th>Antigüedad desde</th><th>Vencimiento</th></tr></thead><tbody id="portfolio-body"></tbody></table></div></article>
-        <article class="panel wide" id="experience"><div class="panel-head"><div><p class="eyebrow">Experiencias</p><h2>Satisfacción y NPS adaptado</h2></div></div><div class="table-wrap"><table><thead><tr><th>Periodo</th><th>Respuestas</th><th>Satisfacción</th><th>NPS adaptado</th></tr></thead><tbody id="satisfaction-body"></tbody></table></div></article>
+
+        <article class="panel" id="experience"><div class="panel-head"><div><p class="eyebrow">Experiencias</p><h2>Satisfacción y NPS adaptado</h2></div></div><div class="table-wrap"><table><thead><tr><th>Periodo</th><th>Respuestas</th><th>Satisfacción</th><th>NPS adaptado</th></tr></thead><tbody id="satisfaction-body"></tbody></table></div></article>
+
+        <article class="panel" id="dimensions"><div class="panel-head"><div><p class="eyebrow">Calidad por dimensión</p><h2>4 dimensiones y temarios</h2></div><span id="topics-count" class="tag">—</span></div><div id="dimensions-view" class="chart-view" aria-live="polite"></div><ul id="topics-list" class="topic-list" aria-live="polite"></ul></article>
+
         <article class="panel wide" id="insights"><div class="panel-head"><div><p class="eyebrow">Evolución y experiencia</p><h2>Lecturas del periodo</h2></div><div class="chart-toggle"><button data-insight="trend" class="is-active" type="button">Tendencia</button><button data-insight="nps" type="button">NPS</button></div></div><p id="insight-description" class="chart-description"></p><div id="insight-view" class="chart-view" aria-live="polite"></div></article>
       </section>
     </section>
