@@ -1,5 +1,7 @@
 """Resultados versionados y auditables de Machine Learning en Gold."""
 
+from typing import Any
+
 from sqlalchemy import (
     JSON,
     Column,
@@ -31,26 +33,26 @@ class GoldMlResultado(Base):  # type: ignore[misc,valid-type]
         Index("ix_gold_ml_resultados_caso_estado", "caso_uso", "estado_evaluacion"),
     )
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    caso_uso = Column(String(40), nullable=False)
-    id_empresa = Column(String(64), nullable=False)
-    id_ejecucion = Column(String(36), nullable=False)
-    version_modelo = Column(String(64), nullable=False)
-    fecha_corte = Column(String(32), nullable=False)
-    estado_evaluacion = Column(String(32), nullable=False)
-    metodo = Column(String(128), nullable=False)
-    score = Column(Float, nullable=True)
-    segmento = Column(String(128), nullable=True)
-    soporte = Column(Integer, nullable=True)
-    justificacion = Column(JSON, nullable=False, default=dict)
-    metricas = Column(JSON, nullable=False, default=dict)
-    hash_dataset = Column(String(64), nullable=True)
-    creado_en = Column(
+    id: Any = Column(Integer, primary_key=True, autoincrement=True)
+    caso_uso: Any = Column(String(40), nullable=False)
+    id_empresa: Any = Column(String(64), nullable=False)
+    id_ejecucion: Any = Column(String(36), nullable=False)
+    version_modelo: Any = Column(String(64), nullable=False)
+    fecha_corte: Any = Column(String(32), nullable=False)
+    estado_evaluacion: Any = Column(String(32), nullable=False)
+    metodo: Any = Column(String(128), nullable=False)
+    score: Any = Column(Float, nullable=True)
+    segmento: Any = Column(String(128), nullable=True)
+    soporte: Any = Column(Integer, nullable=True)
+    justificacion: Any = Column(JSON, nullable=False, default=dict)
+    metricas: Any = Column(JSON, nullable=False, default=dict)
+    hash_dataset: Any = Column(String(64), nullable=True)
+    creado_en: Any = Column(
         DateTime(timezone=True),
         server_default=text("CURRENT_TIMESTAMP"),
         nullable=False,
     )
-    actualizado_en = Column(
+    actualizado_en: Any = Column(
         DateTime(timezone=True),
         server_default=text("CURRENT_TIMESTAMP"),
         onupdate=text("CURRENT_TIMESTAMP"),

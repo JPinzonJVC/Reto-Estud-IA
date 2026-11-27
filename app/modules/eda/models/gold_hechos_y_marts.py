@@ -1,5 +1,7 @@
 """Modelos SQLAlchemy ORM para hechos analíticos BI y evolución mensual en Gold."""
 
+from typing import Any
+
 from sqlalchemy import Boolean, Column, Float, ForeignKey, Integer, String, Text
 
 from app.database import Base
@@ -77,7 +79,7 @@ class GoldFactEncuestasBi(Base):  # type: ignore[misc,valid-type]
 
     __tablename__ = "gold_fact_encuestas_bi"
 
-    id_respuesta = Column(String(64), primary_key=True)
+    id_respuesta: Any = Column(String(64), primary_key=True)
     """Clave primaria de la respuesta de encuesta."""
 
     id_evento = Column(
@@ -102,16 +104,16 @@ class GoldFactEncuestasBi(Base):  # type: ignore[misc,valid-type]
     fecha_encuesta = Column(String(32), nullable=False)
     """Fecha ISO de respuesta."""
 
-    periodo_mes_iso = Column(String(32), nullable=False, index=True)
+    periodo_mes_iso: Any = Column(String(32), nullable=False, index=True)
     """Periodo mensual YYYY-MM."""
 
-    trimestre_iso = Column(String(32), nullable=False)
+    trimestre_iso: Any = Column(String(32), nullable=False)
     """Trimestre calendario YYYY-Qn."""
 
-    tipo_encuesta = Column(String(64), nullable=False, index=True)
+    tipo_encuesta: Any = Column(String(64), nullable=False, index=True)
     """Tipo ('POST_EVENTO' o 'ENCUESTA_90_DIAS')."""
 
-    modalidad_encuesta = Column(String(64), nullable=False, index=True)
+    modalidad_encuesta: Any = Column(String(64), nullable=False, index=True)
     """Modalidad ('Presencial' o 'Virtual')."""
 
     nombre_ciudad_encuesta = Column(String(128), nullable=True)
@@ -129,16 +131,16 @@ class GoldFactEncuestasBi(Base):  # type: ignore[misc,valid-type]
     calif_relevancia_temas = Column(Integer, nullable=True)
     """Calificación Likert 1-5 de relevancia temática."""
 
-    promedio_respuesta_1_5 = Column(Float, nullable=True)
+    promedio_respuesta_1_5: Any = Column(Float, nullable=True)
     """Promedio individual de la respuesta (1.0 a 5.0)."""
 
-    nivel_satisfaccion_1_5 = Column(String(32), nullable=True)
+    nivel_satisfaccion_1_5: Any = Column(String(32), nullable=True)
     """Tramo Likert ('ALTA', 'MEDIA' o 'BAJA')."""
 
-    pregunta_recomendacion_nps_0_10 = Column(Integer, nullable=True)
+    pregunta_recomendacion_nps_0_10: Any = Column(Integer, nullable=True)
     """Puntaje entero NPS oficial (0 a 10)."""
 
-    categoria_nps_0_10 = Column(String(32), nullable=True)
+    categoria_nps_0_10: Any = Column(String(32), nullable=True)
     """Categoría NPS oficial ('PROMOTOR', 'PASIVO', 'DETRACTOR')."""
 
     temarios_sugeridos = Column(Text, nullable=True)
