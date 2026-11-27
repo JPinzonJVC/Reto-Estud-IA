@@ -33,7 +33,7 @@ try:
     PREFECT_AVAILABLE = True
 except ImportError:  # pragma: no cover - fallback para entornos sin prefect instalado
     PREFECT_AVAILABLE = False
-    NO_CACHE = None
+    NO_CACHE: Any = None
 
     def flow(*_args: Any, **_kwargs: Any) -> Callable[[_F], _F]:
         """Decorador fallback cuando prefect no está instalado.
@@ -213,7 +213,7 @@ def extract_zoho_crm_task(
 
 
 def _sincronizar_insumos_normalizados(files_written: list[Path]) -> list[Path]:
-    """Copia los CSV extraídos de Drive hacia input/normalizados cuando coinciden con Bronze.
+    """Copia los CSV extraídos de Drive hacia input/normalizados para Bronze.
 
     Args:
         files_written: Lista de rutas generadas por el extractor de Google Drive.
@@ -228,7 +228,7 @@ def _sincronizar_insumos_normalizados(files_written: list[Path]) -> list[Path]:
     cfg = cargar_configuracion()
     cfg.asegurar_directorios()
     requeridos = set(ARCHIVOS_REQUERIDOS_ORIGEN)
-    duplicados_nombres = {"registros_duplicados", "duplicados_afiliados_crm"}
+    duplicados_nombres = {"duplicados_afiliados_crm"}
     sincronizados: list[Path] = []
 
     for path in files_written:
@@ -284,16 +284,13 @@ def run_medallion_etl_task(*, engine: Engine) -> dict[str, Any]:
     cache_policy=NO_CACHE,
 )
 def cleanup_staging_raw_task(*, files_to_delete: list[Path]) -> int:
-    """Elimina archivos temporales descargados en raw_drive/raw_zoho tras carga exitosa.
+    """Elimina archivos temporales en raw_drive/raw_zoho tras carga exitosa.
 
     Args:
         files_to_delete: Rutas de archivos temporales generados por Drive y Zoho.
 
     Returns:
         Cantidad total de archivos temporales eliminados.
-
-    Raises:
-        None.
 
     """
     deleted = 0
@@ -307,17 +304,14 @@ def cleanup_staging_raw_task(*, files_to_delete: list[Path]) -> int:
                 deleted += 1
                 parent_dirs.add(path.parent)
         except OSError as exc:
-            logger.warning("No se pudo eliminar archivo temporal %s: %s", path, exc)
+            logger.warning("No se pudo eliminar temporal %s: %s", path, exc)
 
-    # Limpiar subcarpetas vacías creadas durante descargas recursivas
     for directory in sorted(parent_dirs, key=lambda p: len(p.parts), reverse=True):
         try:
             if directory.exists() and not any(directory.iterdir()):
                 directory.rmdir()
         except OSError:
             continue
-
-    logger.info("Limpieza de staging temporal completada: %d archivo(s) eliminados.", deleted)
     return deleted
 
 
@@ -330,20 +324,17 @@ def eda_medallion_flow(
     drive_extractor: GoogleDriveExtractor | None = None,
     zoho_extractor: ZohoCRMExtractor | None = None,
 ) -> dict[str, Any]:
-    """Orquesta extracción (Drive + Zoho), Medallion ETL y limpieza de staging temporal.
+    """Orquesta extracción (Drive + Zoho), Medallion ETL y limpieza de staging.
 
     Args:
         force_reprocess: Sobreescribe EDA_FORCE_REPROCESS para forzar el ETL.
-        cleanup_raw_after_load: Sobreescribe EDA_CLEANUP_RAW_AFTER_LOAD para borrar temporales.
+        cleanup_raw_after_load: Sobreescribe EDA_CLEANUP_RAW_AFTER_LOAD.
         engine: Motor SQLAlchemy opcional; si es None usa el singleton de app.database.
         drive_extractor: Extractor de Google Drive opcional para pruebas.
         zoho_extractor: Extractor de Zoho CRM opcional para pruebas.
 
     Returns:
         Diccionario con estado final ('SKIPPED_NO_CHANGES' o 'COMPLETED') y detalle.
-
-    Raises:
-        Exception: Si falla alguna de las tareas de extracción o el pipeline Medallion.
 
     """
     settings = OrchestrationEnvs()
@@ -417,7 +408,7 @@ def serve_eda_pipeline() -> None:
     """
     if not PREFECT_AVAILABLE:
         raise ImportError(
-            "Prefect no está instalado. Instala las dependencias con 'pip install -r requirements.txt'."
+            "Prefect no está instalado. Ejecuta 'pip install -r requirements.txt'."
         )
 
     settings = OrchestrationEnvs()

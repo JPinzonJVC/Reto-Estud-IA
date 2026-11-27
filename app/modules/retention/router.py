@@ -81,21 +81,11 @@ def evaluate_customer(payload: CustomerEvaluationRequest) -> dict[str, Any]:
 
 @retention_router.get("/silver/segments")
 def get_silver_segments(
-    fecha_referencia: date = Query(default_factory=date.today),
+    fecha_referencia: date = Query(default=date(2026, 11, 13)),
     limit: int = Query(default=100, ge=1, le=1000),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    """Retorna segmentos de acción temprana disponibles desde Silver.
-
-    Args:
-        fecha_referencia: Fecha base para determinar vencimientos próximos.
-        limit: Máximo de registros por segmento.
-        db: Sesión PostgreSQL inyectada mediante ``Depends(get_db)``.
-
-    Returns:
-        Segmentos de vencimientos, inactividad y asistentes no afiliados.
-
-    """
+    """Retorna segmentos de acción temprana disponibles en el DWH."""
     return DashboardSilverRepository(db).obtener_segmentos(fecha_referencia, limit)
 
 
@@ -138,27 +128,10 @@ def export_silver_segment_csv(
     nivel_membresia: str | None = None,
     sector: str | None = None,
     pais: str | None = None,
-    fecha_referencia: date = Query(default_factory=date.today),
+    fecha_referencia: date = Query(default=date(2026, 11, 13)),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    """Exporta en CSV directo desde Silver una lista accionable de retención.
-
-    Args:
-        segmento: Clave del segmento ('sin_participacion', 'monocontacto', 'vencimientos_90d').
-        kam_id: Identificador opcional de la ejecutiva KAM.
-        nivel_membresia: Nivel de membresía opcional.
-        sector: Sector económico opcional.
-        pais: País de la empresa opcional.
-        fecha_referencia: Fecha base para vencimientos próximos a 90 días.
-        db: Sesión PostgreSQL inyectada mediante ``Depends(get_db)``.
-
-    Returns:
-        Archivo CSV descargable en codificación UTF-8 con BOM para Excel.
-
-    Raises:
-        HTTPException: Si el segmento solicitado no es válido.
-
-    """
+    """Exporta en CSV una lista accionable de retención desde el DWH."""
     repo = DashboardSilverRepository(db)
     if segmento in ("sin_participacion", "monocontacto"):
         data = repo.obtener_riesgo_participacion_silver(
@@ -179,7 +152,10 @@ def export_silver_segment_csv(
     else:
         raise HTTPException(
             status_code=400,
-            detail="Segmento inválido. Usa sin_participacion, monocontacto o vencimientos_90d.",
+            detail=(
+                "Segmento inválido. Usa sin_participacion, "
+                "monocontacto o vencimientos_90d."
+            ),
         )
 
     buffer = io.StringIO()

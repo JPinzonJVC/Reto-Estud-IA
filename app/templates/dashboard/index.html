@@ -1,29 +1,548 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ title }}</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ title }}</title>
+  <link rel="stylesheet" href="/static/css/dashboard.css">
 </head>
 <body>
-    <header class="navbar">
-        <h1>Reto EstudIA - Analítica & ML</h1>
-    </header>
-    <main class="container">
-        <section class="card">
-            <h2>Módulo de Retención</h2>
-            <p>Diagnóstico predictivo de churn y acciones de mitigación.</p>
-        </section>
-        <section class="card">
-            <h2>Módulo de Machine Learning</h2>
-            <p>Pipelines de features, clustering e inferencia estadística.</p>
-        </section>
-        <section class="card">
-            <h2>Módulo de Analítica</h2>
-            <p>Métricas clave de desempeño y embudo de conversión.</p>
-        </section>
-    </main>
-    <script src="/static/js/main.js"></script>
+  <div id="chart-tooltip" class="chart-tooltip" role="tooltip" hidden></div>
+
+  <main class="dashboard-shell">
+    <aside class="sidebar" aria-label="Navegación del dashboard">
+      <div class="sidebar-brand">
+        <a class="brand" href="#overview" data-tab-target="overview" aria-label="ACTHO 360">
+          act<span>h</span>o <strong>360</strong>
+        </a>
+        <span class="badge-silver">DWH</span>
+      </div>
+
+      <div class="sidebar-divider" aria-hidden="true"></div>
+
+      <nav class="tab-nav" role="tablist" aria-label="Vistas del tablero">
+        <button class="nav-link is-active" type="button" role="tab" aria-selected="true" data-tab="overview" data-title="Resumen ejecutivo">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          <span>Resumen</span>
+        </button>
+        <button class="nav-link" type="button" role="tab" aria-selected="false" data-tab="participation" data-title="Participación y KPIs de eventos">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 6-7"/></svg>
+          <span>Eventos y KPIs</span>
+        </button>
+        <button class="nav-link" type="button" role="tab" aria-selected="false" data-tab="portfolio" data-title="Sectores, cartera y segmentos">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span>Sectores y Cartera</span>
+        </button>
+        <button class="nav-link" type="button" role="tab" aria-selected="false" data-tab="experience" data-title="Satisfacción, NPS y temas NLP">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          <span>Satisfacción y NLP</span>
+        </button>
+        <button class="nav-link" type="button" role="tab" aria-selected="false" data-tab="ml" data-title="Modelos ML (Espacio reservado)">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8L12 2z"/></svg>
+          <span>Modelos ML</span>
+        </button>
+        <button class="nav-link" type="button" role="tab" aria-selected="false" data-tab="etl" data-title="Orquestación Prefect & DWH Medallion">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span>Orquestación</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-card">
+        <span class="sidebar-card-dot" aria-hidden="true"></span>
+        <strong>ACTHO 360 · Data Warehouse</strong>
+        <p id="source-caption">Modelo Silver 3NF + Esquema Estrella Gold en tiempo real.</p>
+      </div>
+    </aside>
+
+    <section class="dashboard-content">
+      <header class="topbar" id="overview">
+        <div class="topbar-title">
+          <p class="breadcrumb">ACTHO 360 / <span>Tablero Ejecutivo DWH</span></p>
+          <h1 id="view-heading">Resumen ejecutivo</h1>
+        </div>
+
+        <div class="topbar-pill">
+          <button id="toggle-filters-btn" type="button" class="pill-btn" aria-expanded="false" aria-controls="filters-drawer">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+            <span>Filtros</span>
+            <em id="active-filters-badge" class="pill-count">0</em>
+          </button>
+          <time id="data-date" class="pill-date">Corte…</time>
+          <span id="filter-status" class="pill-status" aria-live="polite">Cargando…</span>
+          <button id="theme-toggle" type="button" class="icon-btn" aria-label="Cambiar modo de color" title="Cambiar tema">
+            <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <section id="filters-drawer" class="filters-drawer" hidden aria-label="Filtros del tablero">
+        <div class="filters">
+          <label>Periodo<select id="period-filter"><option value="">Todos los periodos</option></select></label>
+          <label>Ejecutiva KAM<select id="kam-filter"><option value="">Todas las KAM</option></select></label>
+          <label>Nivel<select id="level-filter"><option value="">Todos los niveles</option></select></label>
+          <label>Sector<select id="sector-filter"><option value="">Todos los sectores</option></select></label>
+          <label>Subsector<select id="subsector-filter"><option value="">Todos los subsectores</option></select></label>
+          <label>Tamaño<select id="size-filter"><option value="">Todos los tamaños</option></select></label>
+          <label>Empleados<select id="employees-filter"><option value="">Todos los rangos</option></select></label>
+          <label>Semáforo<select id="semaphore-filter"><option value="">Todos los niveles</option></select></label>
+          <label>Estado<select id="membership-status-filter"><option value="">Todos los estados</option></select></label>
+          <label>País<select id="country-filter"><option value="">Todos los países</option></select></label>
+          <label>Ciudad empresa<select id="city-filter"><option value="">Todas las ciudades</option></select></label>
+          <label>Ciudad asistente<select id="event-city-filter"><option value="">Todas las ciudades</option></select></label>
+          <label>Línea 2027<select id="line-filter"><option value="">Todas las líneas</option></select></label>
+          <label>Modalidad<select id="modality-filter"><option value="">Todas las modalidades</option></select></label>
+          <button id="clear-filters" type="button" class="btn-reset">Limpiar filtros</button>
+        </div>
+      </section>
+
+      <section class="metric-grid" aria-label="Métricas principales">
+        <article class="kpi-card">
+          <div class="kpi-icon violet" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg>
+          </div>
+          <div class="kpi-body">
+            <span>Afiliados activos</span>
+            <strong id="active-count">—</strong>
+            <small id="retention-detail">Membresías vigentes</small>
+          </div>
+        </article>
+
+        <article class="kpi-card">
+          <div class="kpi-icon teal" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          </div>
+          <div class="kpi-body">
+            <span>En servicios</span>
+            <strong id="service-rate">—</strong>
+            <small id="service-detail">Afiliados con asistencia</small>
+          </div>
+        </article>
+
+        <article class="kpi-card">
+          <div class="kpi-icon indigo" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          </div>
+          <div class="kpi-body">
+            <span>Asistencias</span>
+            <strong id="attendance-count">—</strong>
+            <small id="attendance-detail">Afiliados y leads</small>
+          </div>
+        </article>
+
+        <article class="kpi-card">
+          <div class="kpi-icon cyan" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          </div>
+          <div class="kpi-body">
+            <span>Renovaciones</span>
+            <strong id="renewal-count">—</strong>
+            <small id="renewal-detail">Movimientos CRM</small>
+          </div>
+        </article>
+
+        <article class="kpi-card">
+          <div class="kpi-icon gold" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          </div>
+          <div class="kpi-body">
+            <span>Satisfacción</span>
+            <strong id="satisfaction-score">—</strong>
+            <small id="nps-detail">Promedio escala 1–5</small>
+          </div>
+        </article>
+
+        <article class="kpi-card warning">
+          <div class="kpi-icon orange" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <div class="kpi-body">
+            <span>Vencen en 90 días</span>
+            <strong id="expiring-count">—</strong>
+            <small id="risk-red-detail">Prioridad comercial</small>
+          </div>
+        </article>
+      </section>
+
+      <!-- VISTA 1: RESUMEN EJECUTIVO -->
+      <section class="view-panel is-active" data-view="overview" role="tabpanel">
+        <div class="bento-grid">
+          <article class="panel span-7">
+            <div class="panel-head">
+              <div><p class="eyebrow">Dinámica temporal DWH</p><h2>Evolución mensual de membresías y asistencias</h2></div>
+              <div class="chart-toggle">
+                <button data-insight="memberships" class="is-active" type="button">Membresías</button>
+                <button data-insight="trend" type="button">Asistencias</button>
+                <button data-insight="nps" type="button">Satisfacción 1–5</button>
+              </div>
+            </div>
+            <p id="insight-description" class="chart-description"></p>
+            <div id="insight-view" class="chart-view" aria-live="polite"></div>
+          </article>
+
+          <article class="panel span-5">
+            <div class="panel-head">
+              <div><p class="eyebrow">Retención preventiva</p><h2>Semáforo de riesgo de renovación</h2></div>
+              <span id="semaphore-rate-tag" class="tag soft-violet">—</span>
+            </div>
+            <p class="chart-description">Evaluación multicriterio de vencimiento, inactividad trimestral, satisfacción y monocontacto.</p>
+            <div id="semaphore-overview" class="chart-view" aria-live="polite"></div>
+          </article>
+
+          <article class="panel span-6">
+            <div class="panel-head">
+              <div><p class="eyebrow">Vencimientos 30 / 60 / 90 días</p><h2>Curva de renovación</h2></div>
+              <div class="panel-actions">
+                <div class="chart-toggle">
+                  <button data-exp-view="global" class="is-active" type="button">Global</button>
+                  <button data-exp-view="kam" type="button">Por KAM</button>
+                </div>
+                <a id="export-expiring-btn" class="btn-csv" href="/dashboard/export/vencimientos_90d" download>CSV</a>
+              </div>
+            </div>
+            <p id="expirations-description" class="chart-description"></p>
+            <div id="expirations-view" class="chart-view" aria-live="polite"></div>
+          </article>
+
+          <article class="panel span-6">
+            <div class="panel-head">
+              <div><p class="eyebrow">Composición base activa</p><h2>Distribución de afiliados</h2></div>
+              <div class="chart-toggle">
+                <button data-dist-view="nivel" class="is-active" type="button">Nivel</button>
+                <button data-dist-view="sector" type="button">Sector</button>
+                <button data-dist-view="subsector" type="button">Subsector</button>
+                <button data-dist-view="tamano" type="button">Tamaño</button>
+                <button data-dist-view="empleados" type="button">Empleados</button>
+              </div>
+            </div>
+            <p id="distribution-description" class="chart-description"></p>
+            <div id="distribution-view" class="chart-view" aria-live="polite"></div>
+          </article>
+
+          <article class="panel span-7">
+            <div class="panel-head">
+              <div><p class="eyebrow">Gestión comercial</p><h2>Cartera y servicio por KAM</h2></div>
+              <span class="tag soft-violet">Top ejecutivas</span>
+            </div>
+            <div id="overview-kams-chart" class="chart-view" aria-live="polite"></div>
+          </article>
+
+          <article class="panel span-5">
+            <div class="panel-head">
+              <div><p class="eyebrow">Oferta comercial 2027</p><h2>Afiliados vs. Leads por línea</h2></div>
+              <span id="leads-ratio-tag" class="tag">—</span>
+            </div>
+            <p class="chart-description">Participación de afiliados (violeta) frente a prospectos no afiliados (naranja).</p>
+            <div id="overview-lines-view" class="chart-view" aria-live="polite"></div>
+          </article>
+        </div>
+      </section>
+
+      <!-- VISTA 2: PARTICIPACIÓN Y KPIS DE EVENTOS -->
+      <section class="view-panel" data-view="participation" role="tabpanel">
+        <div class="bento-grid">
+          <article class="panel span-12">
+            <div class="panel-head">
+              <div><p class="eyebrow">Esquema Estrella Gold</p><h2>KPIs estratégicos por tipo de evento</h2></div>
+              <div class="chart-toggle">
+                <button data-evkpi-view="linea" class="is-active" type="button">Por Línea 2027</button>
+                <button data-evkpi-view="modalidad" type="button">Por Modalidad</button>
+              </div>
+            </div>
+            <p id="event-kpis-description" class="chart-description"></p>
+            <div id="event-kpis-view" class="chart-view" aria-live="polite"></div>
+          </article>
+
+          <article class="panel span-7" id="participation">
+            <div class="panel-head">
+              <div><p class="eyebrow">Participación granular</p><h2>Convocatoria por evento</h2></div>
+              <div class="chart-toggle">
+                <button data-chart="bars" class="is-active" type="button">Apiladas</button>
+                <button data-chart="donut" type="button">Torta</button>
+                <button data-chart="table" type="button">Tabla</button>
+              </div>
+            </div>
+            <div id="participation-view" class="chart-view" aria-live="polite"></div>
+          </article>
+
+          <article class="panel span-5" id="audience">
+            <div class="panel-head">
+              <div><p class="eyebrow">Audiencia</p><h2>Perfil jerárquico de asistentes</h2></div>
+              <div class="chart-toggle">
+                <button data-audience="roles" class="is-active" type="button">Cargos</button>
+                <button data-audience="lines" type="button">Líneas</button>
+                <button data-audience="modalities" type="button">Modalidad</button>
+              </div>
+            </div>
+            <p id="audience-description" class="chart-description"></p>
+            <div id="audience-view" class="chart-view" aria-live="polite"></div>
+          </article>
+        </div>
+      </section>
+
+      <!-- VISTA 3: SECTORES, CARTERA Y 8 SEGMENTOS -->
+      <section class="view-panel" data-view="portfolio" role="tabpanel">
+        <div class="bento-grid">
+          <article class="panel span-12">
+            <div class="panel-head">
+              <div><p class="eyebrow">Inteligencia empresarial 360</p><h2>KPIs por sector, subsector, tamaño y rango de empleados</h2></div>
+              <div class="chart-toggle">
+                <button data-segdim="sector_economico" class="is-active" type="button">Sector</button>
+                <button data-segdim="subsector_economico" type="button">Subsector</button>
+                <button data-segdim="tamano_empresa" type="button">Tamaño empresa</button>
+                <button data-segdim="rango_empleados" type="button">Rango empleados</button>
+                <button data-segdim="nivel_membresia" type="button">Nivel</button>
+              </div>
+            </div>
+            <p id="segment-kpis-description" class="chart-description"></p>
+            <div id="segment-kpis-chart" class="chart-view"></div>
+            <div id="segment-kpis-table" class="chart-view"></div>
+          </article>
+
+          <article class="panel span-7" id="kams">
+            <div class="panel-head">
+              <div><p class="eyebrow">Gestión comercial</p><h2>Desempeño y semáforo por ejecutiva KAM</h2></div>
+              <div class="chart-toggle">
+                <button data-kam-view="chart" class="is-active" type="button">Cartera</button>
+                <button data-kam-view="semaphore" type="button">Semáforo</button>
+                <button data-kam-view="table" type="button">Tabla</button>
+              </div>
+            </div>
+            <div id="kams-view" class="chart-view" aria-live="polite"></div>
+          </article>
+
+          <article class="panel span-5" id="pillars">
+            <div class="panel-head">
+              <div><p class="eyebrow">Comunidad y diversidad</p><h2>Pilares estratégicos y equidad</h2></div>
+              <span id="women-share" class="tag">—</span>
+            </div>
+            <p id="pillars-description" class="chart-description"></p>
+            <div id="pillars-view" class="chart-view" aria-live="polite"></div>
+          </article>
+
+          <article class="panel span-12" id="comm-segments">
+            <div class="panel-head">
+              <div><p class="eyebrow">Activación comercial · Habeas Data</p><h2>Centro de los 8 segmentos accionables de comunicaciones</h2></div>
+              <div class="panel-actions">
+                <label class="check-pill">
+                  <input id="habeas-only-toggle" type="checkbox">
+                  <span>Solo autorizados Habeas Data</span>
+                </label>
+                <a id="export-comm-btn" class="btn-csv" href="/dashboard/export/AFILIADOS_SIN_PARTICIPACION" download>Exportar CSV</a>
+              </div>
+            </div>
+            <div id="comm-segment-pills" class="seg-pills"></div>
+            <p id="comm-segment-summary" class="chart-description"></p>
+            <div class="table-wrap bounded compact-table">
+              <table>
+                <thead>
+                  <tr><th>Empresa</th><th>Contacto</th><th>Rol</th><th>KAM</th><th>Nivel</th><th>Sector</th><th>Semáforo</th><th>Criterio</th><th>Habeas Data</th></tr>
+                </thead>
+                <tbody id="comm-segment-body"></tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="panel span-12" id="portfolio">
+            <div class="panel-head">
+              <div><p class="eyebrow">Cartera operativa 360</p><h2>Afiliados, semáforo y vencimientos</h2></div>
+              <div class="table-controls">
+                <input id="portfolio-search" type="search" placeholder="Buscar empresa, KAM o sector…" aria-label="Buscar en cartera">
+                <span id="portfolio-total" class="tag soft-violet">—</span>
+              </div>
+            </div>
+            <div class="table-wrap bounded">
+              <table>
+                <thead>
+                  <tr><th>Empresa</th><th>Ejecutiva</th><th>Semáforo</th><th>Nivel</th><th>Sector</th><th>Tamaño</th><th>Empleados</th><th>Ciudad</th><th>Eventos</th><th>Vencimiento</th></tr>
+                </thead>
+                <tbody id="portfolio-body"></tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- VISTA 4: SATISFACCIÓN, NPS Y TEMAS NLP -->
+      <section class="view-panel" data-view="experience" role="tabpanel">
+        <div class="bento-grid">
+          <article class="panel span-6" id="dimensions">
+            <div class="panel-head">
+              <div><p class="eyebrow">Calidad por dimensión (1–5)</p><h2>Comparativa Presencial vs. Virtual</h2></div>
+              <span id="dimensions-scale-tag" class="tag soft-violet">Zoom 4.0–5.0</span>
+            </div>
+            <p class="chart-description">Ordenado de mayor a menor calificación para identificar fortalezas y oportunidades de mejora.</p>
+            <div id="dimensions-radar" class="chart-view" aria-live="polite"></div>
+            <div id="dimensions-table" class="chart-view"></div>
+          </article>
+
+          <article class="panel span-6">
+            <div class="panel-head">
+              <div><p class="eyebrow">Clasificación temática NLP</p><h2>Temas HR más solicitados por afiliados</h2></div>
+              <span id="topics-count" class="tag">—</span>
+            </div>
+            <p class="chart-description">Taxonomía automática sobre comentarios abiertos y muestra reciente de sugerencias.</p>
+            <div id="nlp-topics-chart" class="chart-view"></div>
+            <ul id="topics-list" class="topic-list" aria-live="polite"></ul>
+          </article>
+
+          <article class="panel span-12" id="experience">
+            <div class="panel-head">
+              <div><p class="eyebrow">Separación metodológica</p><h2>Satisfacción Likert (1–5) y disponibilidad NPS Oficial (0–10)</h2></div>
+              <span id="nps-official-badge" class="tag soft-violet">—</span>
+            </div>
+            <div class="table-wrap bounded">
+              <table>
+                <thead>
+                  <tr><th>Periodo</th><th>Tipo encuesta</th><th>Respuestas</th><th>Satisfacción (1–5)</th><th>% Alta (&ge;4.5)</th><th>Índice Likert</th><th>NPS Oficial (0–10)</th></tr>
+                </thead>
+                <tbody id="satisfaction-body"></tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- VISTA 5: MODELOS ML (ESPACIO RESERVADO) -->
+      <section class="view-panel" data-view="ml" role="tabpanel">
+        <div class="bento-grid">
+          <article class="panel span-12">
+            <div class="panel-head">
+              <div><p class="eyebrow">Arquitectura lista para rama ML</p><h2>Estado de los 4 espacios de Machine Learning</h2></div>
+              <span id="ml-global-badge" class="tag soft-violet">Espacio reservado</span>
+            </div>
+            <p id="ml-status-desc" class="chart-description">Las tablas Gold y rutas REST /ml/* ya exponen los vectores de entrada y columnas destino para conectar los artefactos entrenados en la rama de ML.</p>
+            <div id="ml-slots-container" class="ml-slot-grid" aria-live="polite"></div>
+          </article>
+
+          <article class="panel span-6">
+            <div class="panel-head">
+              <div><p class="eyebrow">Ruta /ml/uso-permanencia</p><h2>Relación uso de eventos vs. permanencia CRM</h2></div>
+              <span id="ml-uso-badge" class="tag">Evidencia base</span>
+            </div>
+            <p class="chart-description">Tasa empírica de permanencia activa según tramo de eventos asistidos en el año.</p>
+            <div id="ml-uso-chart" class="chart-view"></div>
+          </article>
+
+          <article class="panel span-6">
+            <div class="panel-head">
+              <div><p class="eyebrow">Ruta /ml/publico-eventos</p><h2>Público interesado y afinidad por línea 2027</h2></div>
+              <span id="ml-afinidad-badge" class="tag">Pre-scoring</span>
+            </div>
+            <p class="chart-description">Afinidad histórica observada y prospectos no afiliados con mayor recurrencia en eventos.</p>
+            <div id="ml-publico-view" class="chart-view"></div>
+          </article>
+
+          <article class="panel span-6">
+            <div class="panel-head">
+              <div><p class="eyebrow">Ruta /ml/fidelidad</p><h2>Detección y predicción de fidelidad</h2></div>
+              <span id="ml-fidelidad-badge" class="tag soft-violet">RFM-S</span>
+            </div>
+            <div id="ml-fidelidad-view" class="chart-view"></div>
+          </article>
+
+          <article class="panel span-6">
+            <div class="panel-head">
+              <div><p class="eyebrow">Ruta /ml/riesgo-renovacion</p><h2>Cola prioritaria para probabilidad de Churn</h2></div>
+              <span id="ml-churn-badge" class="tag">Semáforo híbrido</span>
+            </div>
+            <div id="ml-riesgo-view" class="chart-view"></div>
+          </article>
+        </div>
+      </section>
+
+      <!-- VISTA 6: ORQUESTACIÓN PREFECT & DWH MEDALLION -->
+      <section class="view-panel" data-view="etl" role="tabpanel">
+        <div class="bento-grid">
+          <article class="panel span-12 etl-hero-card">
+            <div class="etl-hero-top">
+              <div>
+                <p class="eyebrow">PREFECT SERVER / <span id="etl-schedule-eyebrow">PROGRAMACIÓN SEMANAL</span></p>
+                <div class="etl-title-row">
+                  <h2 id="etl-flow-name">eda-medallion-weekly-pipeline</h2>
+                  <span id="etl-schedule-pill" class="etl-pill-blue">SEMANAL</span>
+                  <span id="etl-prefect-conn" class="tag soft-violet">Verificando Prefect…</span>
+                </div>
+                <p id="etl-run-meta" class="chart-description">Run ID: — · Deployment: —</p>
+              </div>
+              <div class="panel-actions">
+                <button id="etl-trigger-btn" type="button" class="btn-csv">Ejecutar ahora</button>
+                <button id="etl-autorefresh-btn" type="button" class="btn-auto" aria-pressed="false">Auto-recarga: OFF</button>
+                <button id="etl-refresh-btn" type="button" class="btn-auto">Actualizar estado</button>
+              </div>
+            </div>
+
+            <div class="etl-progress-box">
+              <div class="etl-progress-head">
+                <div class="etl-state-left">
+                  <span id="etl-status-dot" class="status-dot completed"></span>
+                  <strong id="etl-status-text">COMPLETADO</strong>
+                  <small id="etl-status-sub">Cargando última ejecución…</small>
+                </div>
+                <div class="etl-progress-right">
+                  <span>PROGRESO GLOBAL DWH</span>
+                  <strong id="etl-progress-pct">0%</strong>
+                </div>
+              </div>
+              <div class="etl-progress-track">
+                <div id="etl-progress-fill" class="etl-progress-fill" style="width:0%"></div>
+              </div>
+              <div class="etl-meta-strip">
+                <div><span>Última ejecución</span><strong id="etl-last-ago">—</strong><small id="etl-last-ts">—</small></div>
+                <div><span>Próxima ejecución</span><strong id="etl-next-in">—</strong><small id="etl-next-ts">—</small></div>
+                <div><span>Duración</span><strong id="etl-elapsed">—</strong><small>Corrida Medallion</small></div>
+                <div><span>Etapas completadas</span><strong id="etl-steps-ratio">—</strong><small>Silver 3NF + Gold</small></div>
+                <div><span>Registros cargados</span><strong id="etl-records-loaded">—</strong><small id="etl-records-errors">—</small></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="panel span-7">
+            <div class="panel-head">
+              <div><p class="eyebrow">Linaje DWH Medallion</p><h2>Etapas de ejecución (Extract → Bronze → Silver 3NF → Gold)</h2></div>
+              <span id="etl-steps-summary" class="tag soft-violet">—</span>
+            </div>
+            <p class="chart-description">Haz clic en cualquier etapa para inspeccionar su tabla real en PostgreSQL, reglas de calidad y cuadre origen-destino.</p>
+            <ol id="etl-steps-list" class="etl-steps-list" aria-live="polite"></ol>
+          </article>
+
+          <div class="span-5 etl-right-rail">
+            <article class="panel">
+              <div class="panel-head">
+                <div><p class="eyebrow">Salida verificada</p><h2 id="etl-output-title">Selecciona una etapa</h2></div>
+                <span id="etl-output-count" class="tag soft-violet">—</span>
+              </div>
+              <p id="etl-output-subtitle" class="chart-description">Muestra en vivo de registros persistidos, reglas de calidad y reconciliación.</p>
+              <div id="etl-output-metrics" class="etl-mini-kpis"></div>
+              <div id="etl-output-quality" class="etl-quality-box"></div>
+              <div id="etl-output-table" class="table-wrap bounded compact-table"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-head">
+                <div><p class="eyebrow">Prefect Scheduler & Auditoría</p><h2>Programación Cron e historial</h2></div>
+                <span id="etl-cron-badge" class="tag">—</span>
+              </div>
+              <form id="etl-cron-form" class="etl-cron-form">
+                <div class="etl-cron-row">
+                  <input id="etl-cron-input" type="text" placeholder="*/5 * * * *" aria-label="Expresión cron de 5 campos" required>
+                  <button type="submit" class="btn-csv">Guardar cron</button>
+                </div>
+                <div class="etl-cron-presets">
+                  <button type="button" data-cron-preset="*/5 * * * *">Cada 5 min</button>
+                  <button type="button" data-cron-preset="0 * * * *">Cada hora</button>
+                  <button type="button" data-cron-preset="0 6 * * *">Diario 06:00</button>
+                  <button type="button" data-cron-preset="0 6 * * 1">Semanal Lun 06:00</button>
+                </div>
+                <small id="etl-cron-feedback" class="etl-cron-feedback" aria-live="polite"></small>
+              </form>
+              <div id="etl-schedule-details" class="etl-schedule-grid"></div>
+              <ul id="etl-history-list" class="etl-history-list" aria-live="polite"></ul>
+            </article>
+          </div>
+        </div>
+      </section>
+    </section>
+  </main>
+  <script src="/static/js/dashboard.js"></script>
 </body>
 </html>

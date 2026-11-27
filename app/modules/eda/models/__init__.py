@@ -1,4 +1,4 @@
-"""Paquete de modelos SQLAlchemy ORM para las capas Silver, Gold y Audit."""
+"""Paquete de modelos SQLAlchemy ORM para el Data Warehouse Medallion ACTHO 360."""
 
 from app.modules.eda.models.audit_calidad_datos import AuditCalidadDatos
 from app.modules.eda.models.audit_carga import AuditCarga
@@ -8,31 +8,36 @@ from app.modules.eda.models.audit_ingestion_watermark import AuditIngestionWater
 from app.modules.eda.models.audit_reconciliacion_origen_destino import (
     AuditReconciliacionOrigenDestino,
 )
-from app.modules.eda.models.audit_registro_duplicado import AuditRegistroDuplicado
 from app.modules.eda.models.audit_registro_rechazado import AuditRegistroRechazado
-from app.modules.eda.models.gold_agg_participacion_empresa import (
-    GoldAggParticipacionEmpresa,
-)
-from app.modules.eda.models.gold_agg_participacion_eventos import (
-    GoldAggParticipacionEventos,
-)
-from app.modules.eda.models.gold_agg_retencion_empresa import GoldAggRetencionEmpresa
-from app.modules.eda.models.gold_agg_satisfaccion_encuestas import (
-    GoldAggSatisfaccionEncuestas,
-)
-from app.modules.eda.models.gold_agg_segmentos_comunicaciones import (
-    GoldAggSegmentosComunicaciones,
+from app.modules.eda.models.gold_dim_empresa_360 import GoldDimEmpresa360
+from app.modules.eda.models.gold_dim_evento_kpis import GoldDimEventoKpis
+from app.modules.eda.models.gold_hechos_y_marts import (
+    GoldFactAsistenciasBi,
+    GoldFactEncuestasBi,
+    GoldFactEvolucionMembresiasMes,
+    GoldMartSegmentosComunicaciones,
 )
 from app.modules.eda.models.silver_dim_empresa import SilverDimEmpresa
-from app.modules.eda.models.silver_dim_empresa_scd2 import SilverDimEmpresaScd2
 from app.modules.eda.models.silver_dim_evento import SilverDimEvento
+from app.modules.eda.models.silver_dim_geografia import (
+    SilverDimCiudad,
+    SilverDimDepartamento,
+    SilverDimPais,
+)
 from app.modules.eda.models.silver_dim_kam import SilverDimKam
-from app.modules.eda.models.silver_dim_persona import SilverDimPersona
+from app.modules.eda.models.silver_dim_persona import (
+    SilverBridgePersonaEmpresa,
+    SilverDimPersona,
+)
 from app.modules.eda.models.silver_fact_asistencia import SilverFactAsistencia
 from app.modules.eda.models.silver_fact_encuesta_satisfaccion import (
     SilverFactEncuestaSatisfaccion,
 )
 from app.modules.eda.models.silver_fact_movimiento_crm import SilverFactMovimientoCrm
+from app.modules.eda.models.silver_membresia import (
+    SilverDimCatalogoMembresia,
+    SilverMembresia,
+)
 
 __all__ = [
     "AuditCalidadDatos",
@@ -41,19 +46,24 @@ __all__ = [
     "AuditHashFuenteBronze",
     "AuditIngestionWatermark",
     "AuditReconciliacionOrigenDestino",
-    "AuditRegistroDuplicado",
     "AuditRegistroRechazado",
-    "GoldAggParticipacionEmpresa",
-    "GoldAggParticipacionEventos",
-    "GoldAggRetencionEmpresa",
-    "GoldAggSatisfaccionEncuestas",
-    "GoldAggSegmentosComunicaciones",
+    "GoldDimEmpresa360",
+    "GoldDimEventoKpis",
+    "GoldFactAsistenciasBi",
+    "GoldFactEncuestasBi",
+    "GoldFactEvolucionMembresiasMes",
+    "GoldMartSegmentosComunicaciones",
+    "SilverBridgePersonaEmpresa",
+    "SilverDimCatalogoMembresia",
+    "SilverDimCiudad",
+    "SilverDimDepartamento",
     "SilverDimEmpresa",
-    "SilverDimEmpresaScd2",
     "SilverDimEvento",
     "SilverDimKam",
+    "SilverDimPais",
     "SilverDimPersona",
     "SilverFactAsistencia",
     "SilverFactEncuestaSatisfaccion",
     "SilverFactMovimientoCrm",
+    "SilverMembresia",
 ]

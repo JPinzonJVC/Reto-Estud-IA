@@ -1,4 +1,4 @@
-"""Transformaciones de la capa Silver (Dimensiones puras, SCD2 y Hechos)."""
+"""Transformaciones de la capa Silver normalizada (13 entidades 3NF y Hechos)."""
 
 from datetime import datetime
 from typing import Any
@@ -7,53 +7,64 @@ import numpy as np
 import pandas as pd
 
 from app.modules.eda.audit import BitacoraAuditoria, filtrar_registros_rechazados
-from app.modules.eda.bronze import guardar_tabla_medallion, homologar_kam_id
+from app.modules.eda.bronze import (
+    guardar_tabla_medallion,
+    homologar_kam_id,
+    homologar_kam_opcional,
+)
 from app.modules.eda.config import ConfiguracionETL
+from app.modules.eda.geografia import (
+    CatalogoGeografico,
+    construir_catalogo_geografico,
+    extraer_ciudad_sede_evento,
+)
+from app.modules.eda.membresias import (
+    _homologar_par_categoria,
+    construir_catalogo_y_membresias,
+)
 from app.modules.eda.normalizer import (
-    extraer_departamento_si_aplica,
-    normalizar_dataframe_silver,
+    limpiar_texto_y_mojibake,
+    normalizar_booleano,
+    normalizar_fecha_iso,
+    normalizar_sector,
 )
-from app.modules.eda.scd2 import construir_dim_empresas_scd2
+from app.modules.eda.puente_personas import construir_bridge_persona_empresa
 
-COLS_DESCRIPTIVAS_EMPRESA: tuple[str, ...] = (
-    "id_empresa",
-    "id_registro_crm",
-    "kam_id",
-    "kam_valor_original",
-    "es_empresa_activa",
-    "es_membresia_activa",
-    "estado_membresia_detalle",
-    "segmento_membresia",
-    "nivel_membresia",
-    "tipo_membresia_original",
-    "categoria_membresia_original",
-    "sector_economico",
-    "subsector_economico",
-    "tamano_empresa",
-    "rango_empleados",
-    "porcentaje_mujeres_num",
-    "ciudad",
-    "region_departamento",
-    "pais",
-    "fecha_afiliacion",
-    "fecha_expiracion",
-    "fecha_miembro_desde",
-    "fecha_ultima_actividad",
-    "fecha_hora_ultima_actividad",
-    "fecha_cambio_registro",
-    "fecha_hora_cambio_registro",
-    "es_independiente",
-    "es_registro_prueba",
-    "bloqueado_crm",
-    "vinculado_comunidades",
-    "pilar_hr_estrategico",
-    "pilar_mas_que_salario",
-    "pilar_talento_que_elige",
-    "pilar_gente_que_crece",
-    "comunidad_mujeres_hr",
-    "es_influenciador",
-    "en_crm_afiliados",
-)
+
+def _a_int64_nullable(serie: pd.Series) -> pd.Series:
+    """Convierte una serie numérica o con nulos al tipo entero nullable Int64."""
+    return pd.to_numeric(serie, errors="coerce").round().astype("Int64")
+
+
+def _limpiar_archivos_legado_silver(cfg: ConfiguracionETL) -> None:
+    """Elimina archivos obsoletos de versiones previas en la carpeta Silver."""
+    for ext in ("csv", "parquet"):
+        legado = cfg.silver_dir / f"dim_empresas_scd2.{ext}"
+        if legado.exists():
+            legado.unlink()
+
+
+def _persistir_geografia(
+    bronze: dict[str, pd.DataFrame],
+    cfg: ConfiguracionETL,
+    bitacora: BitacoraAuditoria,
+) -> CatalogoGeografico:
+    """Construye y persiste las 3 tablas geográficas (país, departamento, ciudad)."""
+    t0 = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    geo = construir_catalogo_geografico(bronze)
+    guardar_tabla_medallion(geo.dim_pais, cfg.silver_dir, "dim_pais")
+    guardar_tabla_medallion(geo.dim_departamento, cfg.silver_dir, "dim_departamento")
+    guardar_tabla_medallion(geo.dim_ciudad, cfg.silver_dir, "dim_ciudad")
+
+    bitacora.registrar_carga(
+        "bronze/geografia -> silver/dim_pais_departamento_ciudad",
+        t0,
+        leidos=len(bronze["dim_empresas"]),
+        proc=len(geo.dim_ciudad),
+        ins=len(geo.dim_pais) + len(geo.dim_departamento) + len(geo.dim_ciudad),
+        act=0,
+    )
+    return geo
 
 
 def _procesar_dim_kams(
@@ -61,19 +72,9 @@ def _procesar_dim_kams(
     cfg: ConfiguracionETL,
     bitacora: BitacoraAuditoria,
 ) -> pd.DataFrame:
-    """Construye dim_kams en Silver y separa métricas de origen a Audit.
-
-    Args:
-        bronze: Diccionario de DataFrames de la capa Bronze.
-        cfg: Configuración del pipeline ETL Medallion.
-        bitacora: Bitácora de auditoría activa.
-
-    Returns:
-        DataFrame depurado de dim_kams.
-
-    """
+    """Construye silver_dim_kams limpia y separa métricas precalculadas a Audit."""
     t0 = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    df_kams_orig = bronze["dim_kams"].copy()
+    df_orig = bronze["dim_kams"].copy()
     cols_metricas = [
         c
         for c in (
@@ -87,76 +88,70 @@ def _procesar_dim_kams(
             "nuevas_afiliaciones_ult_2m",
             "renovaciones_ult_2m",
         )
-        if c in df_kams_orig.columns
+        if c in df_orig.columns
     ]
     guardar_tabla_medallion(
-        df_kams_orig[cols_metricas], cfg.audit_dir, "audit_metricas_origen_kams"
+        df_orig[cols_metricas], cfg.audit_dir, "audit_metricas_origen_kams"
     )
 
-    kam_hom = df_kams_orig["kam_id"].apply(lambda v: homologar_kam_id(v, cfg))
-    df_kams_silver = pd.DataFrame(
+    kam_hom = df_orig["kam_id"].apply(lambda v: homologar_kam_id(v, cfg))
+    df_kams = pd.DataFrame(
         {
             "kam_id": kam_hom,
-            "kam_etiqueta_original": df_kams_orig["kam_id"],
-            "responsable_nombre": df_kams_orig["responsable_nombre"],
-            "tiene_seguimiento_eventos": df_kams_orig["tiene_seguimiento_eventos"].astype(
-                bool
+            "responsable_nombre": df_orig["responsable_nombre"].apply(
+                lambda v: limpiar_texto_y_mojibake(v) or "No especificado"
             ),
-            "es_kam_asignado": kam_hom != cfg.kam_sin_asignar_id,
+            "tiene_seguimiento_eventos": df_orig["tiene_seguimiento_eventos"]
+            .fillna(False)
+            .astype(bool),
         }
     )
-    df_kams_silver, rech = filtrar_registros_rechazados(
-        df_kams_silver, "dim_kams", ["kam_id"], "dim_kams.csv", bitacora
+    if cfg.kam_sin_asignar_id not in set(df_kams["kam_id"]):
+        fila_unassigned = pd.DataFrame(
+            [
+                {
+                    "kam_id": cfg.kam_sin_asignar_id,
+                    "responsable_nombre": "Corporativo / Sin asignar",
+                    "tiene_seguimiento_eventos": False,
+                }
+            ]
+        )
+        df_kams = pd.concat([df_kams, fila_unassigned], ignore_index=True)
+
+    df_kams, rech = filtrar_registros_rechazados(
+        df_kams, "dim_kams", ["kam_id"], "dim_kams.csv", bitacora
     )
-    guardar_tabla_medallion(df_kams_silver, cfg.silver_dir, "dim_kams")
+    guardar_tabla_medallion(df_kams, cfg.silver_dir, "dim_kams")
     bitacora.registrar_calidad(
         "dim_kams",
         "kam_id",
-        tipo_inc="IDENTIFICADOR_DESCRIPTIVO_NO_CANONICO",
-        val_orig="Sin asignar (cuenta ACTHO)",
+        tipo_inc="HOMOLOGACION_Y_LIMPIEZA_ATRIBUTOS_REDUNDANTES",
+        val_orig="Sin asignar (cuenta ACTHO) y columnas derivadas eliminadas",
         val_corr=cfg.kam_sin_asignar_id,
         estado="CORREGIDO_HOMOLOGADO",
         cant=1,
     )
-    bitacora.registrar_calidad(
-        "dim_kams",
-        "total_registros_afiliados..renovaciones_ult_2m",
-        tipo_inc="METRICAS_AGREGADAS_EN_DIMENSION",
-        val_orig="8 columnas de métricas en dim_kams",
-        val_corr="Separadas a audit_metricas_origen_kams y calculadas desde hechos",
-        estado="REFACTORIZADO",
-        cant=len(df_kams_orig),
-    )
     bitacora.registrar_carga(
         "bronze/dim_kams -> silver/dim_kams",
         t0,
-        leidos=len(df_kams_orig),
-        proc=len(df_kams_silver),
-        ins=len(df_kams_silver),
+        leidos=len(df_orig),
+        proc=len(df_kams),
+        ins=len(df_kams),
         act=1,
         rech=rech,
     )
-    return df_kams_silver
+    return df_kams
 
 
-def _procesar_dim_empresas(
+def _procesar_empresas_y_membresias(
     bronze: dict[str, pd.DataFrame],
+    geo: CatalogoGeografico,
     cfg: ConfiguracionETL,
     bitacora: BitacoraAuditoria,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Construye dim_empresas y dim_empresas_scd2 en la capa Silver.
-
-    Args:
-        bronze: Diccionario de DataFrames de la capa Bronze.
-        cfg: Configuración del pipeline ETL Medallion.
-        bitacora: Bitácora de auditoría activa.
-
-    Returns:
-        Tupla con (df_emp_silver, df_emp_scd2).
-
-    """
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[tuple[str, str], int]]:
+    """Construye dim_empresas, dim_catalogo_membresia y membresias en Silver."""
     t0 = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    df_emp_orig = bronze["dim_empresas"].copy()
+    df_orig = bronze["dim_empresas"].copy()
     cols_metricas = [
         c
         for c in (
@@ -171,105 +166,170 @@ def _procesar_dim_empresas(
             "eventos_reportados_matriz",
             "respuestas_encuestas",
         )
-        if c in df_emp_orig.columns
+        if c in df_orig.columns
     ]
     guardar_tabla_medallion(
-        df_emp_orig[cols_metricas], cfg.audit_dir, "audit_metricas_origen_empresas"
+        df_orig[cols_metricas], cfg.audit_dir, "audit_metricas_origen_empresas"
     )
 
-    cnt_sin_asig = int(df_emp_orig["kam_id"].isin(cfg.valores_origen_sin_asignar).sum())
-    df_emp_silver = df_emp_orig.copy()
-    df_emp_silver["kam_valor_original"] = df_emp_silver["kam_id"]
-    df_emp_silver["kam_id"] = df_emp_silver["kam_id"].apply(
-        lambda v: homologar_kam_id(v, cfg)
-    )
-    cols_disp = [c for c in COLS_DESCRIPTIVAS_EMPRESA if c in df_emp_silver.columns]
-    df_emp_silver = df_emp_silver[cols_disp]
-    if "ciudad" in df_emp_silver.columns and "region_departamento" in df_emp_silver.columns:
-        deptos_en_ciudad = df_emp_silver["ciudad"].apply(extraer_departamento_si_aplica)
-        sin_depto = df_emp_silver["region_departamento"].isna() | (
-            df_emp_silver["region_departamento"].astype(str).str.strip() == ""
+    cnt_sin_asig = int(df_orig["kam_id"].isin(cfg.valores_origen_sin_asignar).sum())
+    ciudades_fk = [
+        geo.resolver_id_ciudad(
+            r.get("ciudad"), r.get("region_departamento"), r.get("pais")
         )
-        df_emp_silver.loc[sin_depto & deptos_en_ciudad.notna(), "region_departamento"] = (
-            deptos_en_ciudad[sin_depto & deptos_en_ciudad.notna()]
-        )
-    df_emp_silver = normalizar_dataframe_silver(
-        df_emp_silver,
-        cols_texto=("subsector_economico",),
-        cols_ciudad=("ciudad",),
-        cols_pais=("pais",),
-        cols_sector=("sector_economico",),
-    )
-    df_emp_silver, rech = filtrar_registros_rechazados(
-        df_emp_silver, "dim_empresas", ["id_empresa"], "dim_empresas.csv", bitacora
-    )
-    guardar_tabla_medallion(df_emp_silver, cfg.silver_dir, "dim_empresas")
+        for _, r in df_orig.iterrows()
+    ]
 
-    df_emp_scd2 = construir_dim_empresas_scd2(
-        df_emp_silver, bronze["registros_duplicados"], cfg
+    df_emp = pd.DataFrame(
+        {
+            "id_empresa": df_orig["id_empresa"].apply(limpiar_texto_y_mojibake),
+            "id_registro_crm": df_orig["id_registro_crm"].apply(
+                limpiar_texto_y_mojibake
+            ),
+            "kam_id": df_orig["kam_id"].apply(lambda v: homologar_kam_id(v, cfg)),
+            "id_ciudad_empresa": pd.Series(ciudades_fk, dtype="Int64"),
+            "es_empresa_activa": df_orig["es_empresa_activa"].eq(True),
+            "sector_economico": df_orig["sector_economico"].apply(normalizar_sector),
+            "subsector_economico": df_orig["subsector_economico"].apply(
+                limpiar_texto_y_mojibake
+            ),
+            "tamano_empresa": df_orig["tamano_empresa"].apply(limpiar_texto_y_mojibake),
+            "rango_empleados": df_orig["rango_empleados"].apply(
+                limpiar_texto_y_mojibake
+            ),
+            "porcentaje_mujeres_num": pd.to_numeric(
+                df_orig["porcentaje_mujeres_num"], errors="coerce"
+            ),
+            "fecha_ultima_actividad_crm": df_orig["fecha_ultima_actividad"].apply(
+                normalizar_fecha_iso
+            ),
+            "es_independiente": df_orig["es_independiente"].apply(normalizar_booleano),
+            "es_registro_prueba": df_orig["es_registro_prueba"].apply(
+                normalizar_booleano
+            ),
+            "bloqueado_crm": df_orig["bloqueado_crm"].apply(normalizar_booleano),
+            "vinculado_comunidades": df_orig["vinculado_comunidades"].apply(
+                normalizar_booleano
+            ),
+            "pilar_hr_estrategico": df_orig["pilar_hr_estrategico"].apply(
+                normalizar_booleano
+            ),
+            "pilar_mas_que_salario": df_orig["pilar_mas_que_salario"].apply(
+                normalizar_booleano
+            ),
+            "pilar_talento_que_elige": df_orig["pilar_talento_que_elige"].apply(
+                normalizar_booleano
+            ),
+            "pilar_gente_que_crece": df_orig["pilar_gente_que_crece"].apply(
+                normalizar_booleano
+            ),
+            "comunidad_mujeres_hr": df_orig["comunidad_mujeres_hr"].apply(
+                normalizar_booleano
+            ),
+            "es_influenciador": df_orig["es_influenciador"].apply(normalizar_booleano),
+        }
     )
-    guardar_tabla_medallion(df_emp_scd2, cfg.silver_dir, "dim_empresas_scd2")
+    df_emp, rech = filtrar_registros_rechazados(
+        df_emp, "dim_empresas", ["id_empresa"], "dim_empresas.csv", bitacora
+    )
+    guardar_tabla_medallion(df_emp, cfg.silver_dir, "dim_empresas")
 
-    n_inc = int(df_emp_scd2["tiene_fechas_inconsistentes"].sum())
-    n_sup = int(df_emp_scd2["tiene_intervalo_superpuesto"].sum())
-    n_no_rec = int(
-        (
-            df_emp_scd2["clasificacion_historia_scd2"]
-            == "HISTORIA_NO_RECONSTRUIBLE_SIN_FECHAS_EN_ORIGEN"
-        ).sum()
+    t1 = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    dim_cat, df_mem, mapa_cat = construir_catalogo_y_membresias(bronze, cfg, bitacora)
+    df_mem = df_mem[df_mem["id_empresa"].isin(set(df_emp["id_empresa"]))].reset_index(
+        drop=True
     )
-    bitacora.registrar_calidad(
-        "dim_empresas",
-        "kam_id",
-        tipo_inc="CLAVE_FORANEA_NO_HOMOLOGADA",
-        val_orig="Valores 'Sin asignar' y 'Sin asignar (cuenta ACTHO)'",
-        val_corr=f"{cfg.kam_sin_asignar_id} (conservando kam_valor_original)",
-        estado="CORREGIDO_HOMOLOGADO",
-        cant=cnt_sin_asig,
+    df_mem, rech_mem = filtrar_registros_rechazados(
+        df_mem, "membresias", ["id_membresia"], "dim_empresas.csv", bitacora
     )
-    bitacora.registrar_calidad(
-        "dim_empresas_scd2",
-        "fecha_inicio_vigencia / fecha_fin_vigencia",
-        tipo_inc="VALIDACION_VIGENCIAS_E_HISTORIA_SCD2",
-        val_orig=(
-            f"Inconsistentes (inicio>fin): {n_inc} | "
-            f"Intervalos superpuestos: {n_sup} | Sin fechas en CRM: {n_no_rec}"
-        ),
-        val_corr=(
-            "Clasificados explícitamente en clasificacion_historia_scd2 "
-            "sin inventar fechas"
-        ),
-        estado="CLASIFICADO_DOCUMENTADO",
-        cant=n_inc + n_sup + n_no_rec,
-    )
+    guardar_tabla_medallion(dim_cat, cfg.silver_dir, "dim_catalogo_membresia")
+    guardar_tabla_medallion(df_mem, cfg.silver_dir, "membresias")
+
     bitacora.registrar_carga(
-        "bronze/dim_empresas -> silver/dim_empresas (+scd2)",
+        "bronze/dim_empresas -> silver/dim_empresas",
         t0,
-        leidos=len(df_emp_orig),
-        proc=len(df_emp_silver),
-        ins=len(df_emp_silver),
+        leidos=len(df_orig),
+        proc=len(df_emp),
+        ins=len(df_emp),
         act=cnt_sin_asig,
         rech=rech,
     )
-    return df_emp_silver, df_emp_scd2
+    bitacora.registrar_carga(
+        "bronze/dim_empresas -> silver/membresias (+catalogo)",
+        t1,
+        leidos=len(df_orig),
+        proc=len(df_mem),
+        ins=len(df_mem) + len(dim_cat),
+        act=0,
+        rech=rech_mem,
+    )
+    return df_emp, dim_cat, df_mem, mapa_cat
 
 
-def _procesar_dim_personas_y_eventos(
+def _procesar_dim_eventos(
     bronze: dict[str, pd.DataFrame],
+    geo: CatalogoGeografico,
     cfg: ConfiguracionETL,
     bitacora: BitacoraAuditoria,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Construye dim_personas y dim_eventos en la capa Silver.
+) -> pd.DataFrame:
+    """Construye silver_dim_eventos eliminando fecha_evento redundante."""
+    t1 = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    df_ev_orig = bronze["dim_eventos"].copy()
+    f_ini = df_ev_orig["fecha_inicio_evento"].apply(normalizar_fecha_iso)
+    f_ini_final = f_ini.fillna(df_ev_orig["fecha_evento"].apply(normalizar_fecha_iso))
+    f_fin_final = (
+        df_ev_orig["fecha_fin_evento"].apply(normalizar_fecha_iso).fillna(f_ini_final)
+    )
+    ciudades_ev = [
+        extraer_ciudad_sede_evento(r.get("nombre_evento"), r.get("modalidad"), geo)
+        for _, r in df_ev_orig.iterrows()
+    ]
 
-    Args:
-        bronze: Diccionario de DataFrames de la capa Bronze.
-        cfg: Configuración del pipeline ETL Medallion.
-        bitacora: Bitácora de auditoría activa.
+    df_ev = pd.DataFrame(
+        {
+            "id_evento": pd.to_numeric(df_ev_orig["id_evento"], errors="coerce"),
+            "id_ciudad_evento": pd.Series(ciudades_ev, dtype="Int64"),
+            "nombre_evento": df_ev_orig["nombre_evento"].apply(
+                limpiar_texto_y_mojibake
+            ),
+            "fecha_inicio_evento": f_ini_final,
+            "fecha_fin_evento": f_fin_final,
+            "linea_oferta_2027": df_ev_orig["linea_oferta_2027"].apply(
+                lambda v: limpiar_texto_y_mojibake(v) or "Sin clasificar"
+            ),
+            "experiencia_detalle": df_ev_orig["experiencia_detalle"].apply(
+                limpiar_texto_y_mojibake
+            ),
+            "modalidad": df_ev_orig["modalidad"].apply(
+                lambda v: limpiar_texto_y_mojibake(v) or "Virtual"
+            ),
+        }
+    )
+    df_ev, rech_ev = filtrar_registros_rechazados(
+        df_ev, "dim_eventos", ["id_evento"], "dim_eventos.csv", bitacora
+    )
+    df_ev["id_evento"] = df_ev["id_evento"].astype(int)
+    guardar_tabla_medallion(df_ev, cfg.silver_dir, "dim_eventos")
+    bitacora.registrar_carga(
+        "bronze/dim_eventos -> silver/dim_eventos",
+        t1,
+        leidos=len(df_ev_orig),
+        proc=len(df_ev),
+        ins=len(df_ev),
+        act=0,
+        rech=rech_ev,
+    )
+    return df_ev
 
-    Returns:
-        Tupla con (df_per_silver, df_ev_silver).
 
-    """
+def _procesar_personas_y_puente(
+    bronze: dict[str, pd.DataFrame],
+    df_emp: pd.DataFrame,
+    geo: CatalogoGeografico,
+    cfg: ConfiguracionETL,
+    bitacora: BitacoraAuditoria,
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[tuple[str, str], int]]:
+    """Construye silver_dim_personas y silver_bridge_persona_empresa."""
     t0 = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     df_per_orig = bronze["dim_personas"].copy()
     cols_m_per = [
@@ -290,169 +350,48 @@ def _procesar_dim_personas_y_eventos(
         df_per_orig[cols_m_per], cfg.audit_dir, "audit_metricas_origen_personas"
     )
 
-    df_per_silver = pd.DataFrame(
+    df_per = pd.DataFrame(
         {
-            "id_persona": df_per_orig["id_persona"],
-            "id_empresa_principal": df_per_orig["id_empresa_principal"],
-            "estado_resolucion_empresa": np.where(
-                df_per_orig["id_empresa_principal"].notna(),
-                "ASOCIADA",
-                "SIN_EMPRESA_ASOCIADA",
+            "id_persona": df_per_orig["id_persona"].apply(limpiar_texto_y_mojibake),
+            "id_ciudad_persona": pd.Series(
+                [geo.resolver_id_ciudad(v) for v in df_per_orig["ciudad"]],
+                dtype="Int64",
             ),
-            "nivel_cargo": df_per_orig["nivel_cargo"],
-            "ciudad": df_per_orig["ciudad"],
-            "es_afiliado_principal_nuevo": df_per_orig[
-                "es_afiliado_principal_nuevo"
-            ].astype(bool),
-            "fecha_afiliacion_nueva": df_per_orig["fecha_afiliacion_nueva"],
+            "nivel_cargo_actual": df_per_orig["nivel_cargo"].apply(
+                limpiar_texto_y_mojibake
+            ),
         }
     )
-    df_per_silver = normalizar_dataframe_silver(df_per_silver, cols_ciudad=("ciudad",))
-    df_per_silver, rech_per = filtrar_registros_rechazados(
-        df_per_silver, "dim_personas", ["id_persona"], "dim_personas.csv", bitacora
+    df_per, rech_per = filtrar_registros_rechazados(
+        df_per, "dim_personas", ["id_persona"], "dim_personas.csv", bitacora
     )
-    n_per_sin_emp = int(df_per_silver["id_empresa_principal"].isna().sum())
-    guardar_tabla_medallion(df_per_silver, cfg.silver_dir, "dim_personas")
-    bitacora.registrar_calidad(
-        "dim_personas",
-        "id_empresa_principal",
-        tipo_inc="RELACION_OPCIONAL_NULA",
-        val_orig=f"NaN ({n_per_sin_emp} personas sin empresa asociada)",
-        val_corr="Se conserva NaN con estado_resolucion_empresa='SIN_EMPRESA_ASOCIADA'",
-        estado="DOCUMENTADO_CONSERVADO",
-        cant=n_per_sin_emp,
-    )
+    guardar_tabla_medallion(df_per, cfg.silver_dir, "dim_personas")
     bitacora.registrar_carga(
         "bronze/dim_personas -> silver/dim_personas",
         t0,
         leidos=len(df_per_orig),
-        proc=len(df_per_silver),
-        ins=len(df_per_silver),
+        proc=len(df_per),
+        ins=len(df_per),
         act=0,
         rech=rech_per,
     )
 
-    t1 = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    df_ev_orig = bronze["dim_eventos"].copy()
-    cols_ev = [
-        c
-        for c in (
-            "id_evento",
-            "archivo_csv",
-            "fecha_evento",
-            "fecha_inicio_evento",
-            "fecha_fin_evento",
-            "periodo_mes_iso",
-            "nombre_evento",
-            "linea_oferta_2027",
-            "experiencia_detalle",
-            "modalidad",
-            "es_presencial",
-            "tiene_asistentes_registrados",
-        )
-        if c in df_ev_orig.columns
-    ]
-    df_ev_silver = df_ev_orig[cols_ev].copy()
-    df_ev_silver, rech_ev = filtrar_registros_rechazados(
-        df_ev_silver, "dim_eventos", ["id_evento"], "dim_eventos.csv", bitacora
+    t_br = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    df_bridge, mapa_vinculo = construir_bridge_persona_empresa(
+        bronze,
+        personas_validas=set(df_per["id_persona"]),
+        empresas_validas=set(df_emp["id_empresa"]),
     )
-    guardar_tabla_medallion(df_ev_silver, cfg.silver_dir, "dim_eventos")
+    guardar_tabla_medallion(df_bridge, cfg.silver_dir, "bridge_persona_empresa")
     bitacora.registrar_carga(
-        "bronze/dim_eventos -> silver/dim_eventos",
-        t1,
-        leidos=len(df_ev_orig),
-        proc=len(df_ev_silver),
-        ins=len(df_ev_silver),
+        "bronze/multi -> silver/bridge_persona_empresa",
+        t_br,
+        leidos=len(df_per),
+        proc=len(df_bridge),
+        ins=len(df_bridge),
         act=0,
-        rech=rech_ev,
     )
-    return df_per_silver, df_ev_silver
-
-
-def _procesar_fact_asistencias(
-    bronze: dict[str, pd.DataFrame],
-    df_ev_silver: pd.DataFrame,
-    cfg: ConfiguracionETL,
-    bitacora: BitacoraAuditoria,
-) -> pd.DataFrame:
-    """Construye fact_asistencias en Silver y concilia métricas de eventos en Audit.
-
-    Args:
-        bronze: Diccionario de DataFrames de la capa Bronze.
-        df_ev_silver: DataFrame de eventos en capa Silver.
-        cfg: Configuración del pipeline ETL Medallion.
-        bitacora: Bitácora de auditoría activa.
-
-    Returns:
-        DataFrame depurado de fact_asistencias.
-
-    """
-    t0 = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    df_asist_orig = bronze["fact_asistencias"].copy()
-    ev_mod_map = df_ev_silver.set_index("id_evento")["modalidad"].to_dict()
-    n_kam_hom = int(df_asist_orig["kam_id"].isin(cfg.valores_origen_sin_asignar).sum())
-
-    df_asist_silver = df_asist_orig.copy()
-    df_asist_silver["kam_valor_original"] = df_asist_silver["kam_id"]
-    df_asist_silver["kam_id"] = df_asist_silver["kam_id"].apply(
-        lambda v: homologar_kam_id(v, cfg)
-    )
-    df_asist_silver["tipo_asistencia"] = np.where(
-        df_asist_silver["es_afiliado"].astype(bool),
-        "Afiliado",
-        "No Afiliado / Invitado",
-    )
-    df_asist_silver["modalidad_evento"] = df_asist_silver["id_evento"].map(ev_mod_map)
-    df_asist_silver["estado_resolucion_identidad"] = np.where(
-        df_asist_silver["id_empresa"].notna() & df_asist_silver["id_persona"].notna(),
-        "IDENTIDAD_COMPLETA",
-        "PENDIENTE_RESOLUCION_EMPRESA",
-    )
-    df_asist_silver = normalizar_dataframe_silver(
-        df_asist_silver, cols_ciudad=("ciudad_evento",)
-    )
-    df_asist_silver, rech = filtrar_registros_rechazados(
-        df_asist_silver,
-        "fact_asistencias",
-        ["id_asistencia"],
-        "fact_asistencias.csv",
-        bitacora,
-    )
-    n_sin_emp = int(df_asist_silver["id_empresa"].isna().sum())
-    guardar_tabla_medallion(df_asist_silver, cfg.silver_dir, "fact_asistencias")
-
-    bitacora.registrar_calidad(
-        "fact_asistencias",
-        "id_empresa",
-        tipo_inc="IDENTIFICADOR_FALTANTE_EN_HECHO",
-        val_orig=f"NaN ({n_sin_emp} asistencias sin empresa)",
-        val_corr=(
-            "Se conserva NaN con "
-            "estado_resolucion_identidad='PENDIENTE_RESOLUCION_EMPRESA'"
-        ),
-        estado="DOCUMENTADO_CONSERVADO",
-        cant=n_sin_emp,
-    )
-    bitacora.registrar_calidad(
-        "fact_asistencias",
-        "kam_id",
-        tipo_inc="CLAVE_FORANEA_NO_HOMOLOGADA",
-        val_orig="Valores sin asignar en fact_asistencias",
-        val_corr=f"{cfg.kam_sin_asignar_id} (conservando kam_valor_original)",
-        estado="CORREGIDO_HOMOLOGADO",
-        cant=n_kam_hom,
-    )
-    bitacora.registrar_carga(
-        "bronze/fact_asistencias -> silver/fact_asistencias",
-        t0,
-        leidos=len(df_asist_orig),
-        proc=len(df_asist_silver),
-        ins=len(df_asist_silver),
-        act=n_kam_hom,
-        rech=rech,
-    )
-    _guardar_audit_metricas_eventos(bronze["dim_eventos"], df_asist_silver, cfg)
-    return df_asist_silver
+    return df_per, df_bridge, mapa_vinculo
 
 
 def _guardar_audit_metricas_eventos(
@@ -460,14 +399,7 @@ def _guardar_audit_metricas_eventos(
     df_asist_silver: pd.DataFrame,
     cfg: ConfiguracionETL,
 ) -> None:
-    """Concilia las métricas de eventos reportadas en origen vs fact_asistencias.
-
-    Args:
-        df_ev_orig: DataFrame de eventos desde Bronze.
-        df_asist_silver: DataFrame de asistencias en Silver.
-        cfg: Configuración del pipeline ETL Medallion.
-
-    """
+    """Concilia métricas de eventos de origen contra silver_fact_asistencias."""
     calc_ev = df_asist_silver.groupby("id_evento", as_index=False).agg(
         asistencias_calculadas_hechos=("id_asistencia", "count"),
         empresas_unicas_calculadas=("id_empresa", "nunique"),
@@ -493,203 +425,248 @@ def _guardar_audit_metricas_eventos(
         "personas_unicas_calculadas",
     ):
         df_audit_ev[col] = df_audit_ev[col].fillna(0).astype(int)
-    if (
-        "total_asistentes_archivo" in df_audit_ev.columns
-        and "total_reportado_matriz_general" in df_audit_ev.columns
-    ):
-        df_audit_ev["diferencia_archivo_vs_matriz_general"] = (
-            df_audit_ev["total_asistentes_archivo"]
-            - df_audit_ev["total_reportado_matriz_general"]
-        )
     guardar_tabla_medallion(df_audit_ev, cfg.audit_dir, "audit_metricas_origen_eventos")
 
 
-def _estado_identidad_encuesta(row: pd.Series) -> str:
-    """Clasifica el nivel de resolución de identidad de una respuesta de encuesta.
-
-    Args:
-        row: Serie con los campos id_persona e id_empresa.
-
-    Returns:
-        Estado de resolución de identidad de la encuesta.
-
-    """
-    tiene_p = pd.notna(row["id_persona"]) and str(row["id_persona"]).strip() != ""
-    tiene_e = pd.notna(row["id_empresa"]) and str(row["id_empresa"]).strip() != ""
-    if tiene_p and tiene_e:
-        return "CORRESPONDENCIA_COMPLETA"
-    if tiene_p and not tiene_e:
-        return "SIN_CORRESPONDENCIA_EMPRESA"
-    if not tiene_p and tiene_e:
-        return "SIN_CORRESPONDENCIA_PERSONA"
-    return "RESPUESTA_ANONIMA_SIN_CORRESPONDENCIA"
-
-
-def _clasificar_nps_adaptado_1_5(promedio: Any) -> str:
-    """Clasifica el promedio Likert 1-5 en Promotor (4-5), Neutro (3) o Detractor (1-2).
-
-    Args:
-        promedio: Calificación promedio de satisfacción en escala 1 a 5.
-
-    Returns:
-        Categoría del NPS adaptado ('PROMOTOR', 'NEUTRO', 'DETRACTOR' o 'SIN_DATO').
-
-    """
-    if pd.isna(promedio):
-        return "SIN_DATO"
-    val = float(promedio)
-    if val >= 4.0:
-        return "PROMOTOR"
-    if val >= 3.0:
-        return "NEUTRO"
-    return "DETRACTOR"
-
-
-def _clasificar_expiracion_nula(row: pd.Series) -> str:
-    """Clasifica la presencia o ausencia de fecha de expiración en movimientos CRM.
-
-    Args:
-        row: Serie de un movimiento CRM.
-
-    Returns:
-        Clasificación de la fecha de expiración.
-
-    """
-    val = row["fecha_expiracion_afiliacion"]
-    if pd.notna(val) and str(val).strip() != "":
-        return "CON_FECHA_EXPIRACION_REGISTRADA"
-    if row["tipo_movimiento"] == "Trato en Estado":
-        return "NO_REQUIERE_VENCIMIENTO_TRATO_PIPELINE"
-    return "DATO_INCOMPLETO_EN_REPORTE_ALTA"
-
-
-def _procesar_encuestas_y_movimientos(
+def _procesar_fact_asistencias(
     bronze: dict[str, pd.DataFrame],
-    df_emp_silver: pd.DataFrame,
+    geo: CatalogoGeografico,
+    mapa_vinculo: dict[tuple[str, str], int],
+    kams_validos: set[str],
+    *,
     cfg: ConfiguracionETL,
     bitacora: BitacoraAuditoria,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Construye fact_encuestas_satisfaccion y fact_movimientos_crm en Silver.
+) -> pd.DataFrame:
+    """Construye silver_fact_asistencias con id_vinculo y sin atributos redundantes."""
+    t0 = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    df_orig = bronze["fact_asistencias"].copy()
 
-    Args:
-        bronze: Diccionario de DataFrames de la capa Bronze.
-        df_emp_silver: DataFrame depurado de empresas en Silver.
-        cfg: Configuración del pipeline ETL Medallion.
-        bitacora: Bitácora de auditoría activa.
+    per_limpios = df_orig["id_persona"].apply(limpiar_texto_y_mojibake)
+    emp_limpios = df_orig["id_empresa"].apply(limpiar_texto_y_mojibake)
+    vinculos = [
+        mapa_vinculo.get((str(p), str(e))) if (p and e) else None
+        for p, e in zip(per_limpios, emp_limpios)
+    ]
+    kams_opt = [
+        k if (k := homologar_kam_opcional(v, cfg)) in kams_validos else None
+        for v in df_orig["kam_id"]
+    ]
+    tipo_asist = np.where(
+        df_orig["es_afiliado"].eq(True), "Afiliado", "No Afiliado / Invitado"
+    )
 
-    Returns:
-        Tupla con (df_enc_silver, df_mov_silver).
+    df_asist = pd.DataFrame(
+        {
+            "id_asistencia": df_orig["id_asistencia"].apply(limpiar_texto_y_mojibake),
+            "id_evento": pd.to_numeric(df_orig["id_evento"], errors="coerce"),
+            "id_persona": per_limpios,
+            "id_empresa": emp_limpios,
+            "id_vinculo": pd.Series(vinculos, dtype="Int64"),
+            "kam_id": kams_opt,
+            "id_ciudad_asistente": pd.Series(
+                [geo.resolver_id_ciudad(v) for v in df_orig["ciudad_evento"]],
+                dtype="Int64",
+            ),
+            "nivel_cargo_evento": df_orig["nivel_cargo"].apply(
+                limpiar_texto_y_mojibake
+            ),
+            "tipo_asistencia": tipo_asist,
+            "cantidad_inscritos": _a_int64_nullable(df_orig["cantidad_inscritos"]),
+            "tiene_costo": df_orig["tiene_costo"].apply(normalizar_booleano),
+            "autoriza_tratamiento_datos": df_orig["autoriza_tratamiento_datos"].apply(
+                normalizar_booleano
+            ),
+        }
+    )
+    df_asist, rech = filtrar_registros_rechazados(
+        df_asist,
+        "fact_asistencias",
+        ["id_asistencia"],
+        "fact_asistencias.csv",
+        bitacora,
+    )
+    df_asist["id_evento"] = df_asist["id_evento"].astype(int)
+    guardar_tabla_medallion(df_asist, cfg.silver_dir, "fact_asistencias")
+    bitacora.registrar_carga(
+        "bronze/fact_asistencias -> silver/fact_asistencias",
+        t0,
+        leidos=len(df_orig),
+        proc=len(df_asist),
+        ins=len(df_asist),
+        act=0,
+        rech=rech,
+    )
+    _guardar_audit_metricas_eventos(bronze["dim_eventos"], df_asist, cfg)
+    return df_asist
 
-    """
+
+def _normalizar_tipo_encuesta(valor: Any) -> str:
+    """Homologa la tipología de encuesta entre POST_EVENTO y ENCUESTA_90_DIAS."""
+    txt = (limpiar_texto_y_mojibake(valor) or "").upper()
+    return "ENCUESTA_90_DIAS" if "90" in txt else "POST_EVENTO"
+
+
+def _procesar_fact_encuestas(
+    bronze: dict[str, pd.DataFrame],
+    geo: CatalogoGeografico,
+    cfg: ConfiguracionETL,
+    bitacora: BitacoraAuditoria,
+) -> pd.DataFrame:
+    """Construye silver_fact_encuestas_satisfaccion sin duplicar promedios."""
     t0 = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     df_enc_orig = bronze["fact_encuestas_satisfaccion"].copy()
 
-    df_enc_silver = df_enc_orig.copy()
-    if "id_evento" not in df_enc_silver.columns:
-        df_enc_silver.insert(
-            3, "id_evento", pd.Series([pd.NA] * len(df_enc_silver), dtype="Int64")
-        )
-    else:
-        df_enc_silver["id_evento"] = pd.to_numeric(
-            df_enc_silver["id_evento"], errors="coerce"
-        ).astype("Int64")
-    df_enc_silver["estado_resolucion_identidad"] = df_enc_silver.apply(
-        _estado_identidad_encuesta, axis=1
+    ev_col = (
+        _a_int64_nullable(df_enc_orig["id_evento"])
+        if "id_evento" in df_enc_orig.columns
+        else pd.Series([pd.NA] * len(df_enc_orig), dtype="Int64")
     )
-    df_enc_silver["tipo_encuesta"] = "ENCUESTA_POST_EVENTO_SATISFACCION_1_5"
-    df_enc_silver["categoria_nps_adaptado_1_5"] = df_enc_silver[
-        "promedio_satisfaccion"
-    ].apply(_clasificar_nps_adaptado_1_5)
-    if "pregunta_recomendacion_nps_0_10" not in df_enc_silver.columns:
-        df_enc_silver["pregunta_recomendacion_nps_0_10"] = pd.Series(
-            [np.nan] * len(df_enc_silver), dtype="float64"
-        )
-        df_enc_silver["categoria_nps_0_10"] = "NO_DISPONIBLE_ESCALA_1_5"
-    else:
-        nps_vals = pd.to_numeric(
-            df_enc_silver["pregunta_recomendacion_nps_0_10"], errors="coerce"
-        )
-        df_enc_silver["pregunta_recomendacion_nps_0_10"] = nps_vals
-        df_enc_silver["categoria_nps_0_10"] = np.where(
-            nps_vals.isna(),
-            "NO_DISPONIBLE_ESCALA_1_5",
-            np.where(nps_vals >= 9, "PROMOTOR", np.where(nps_vals >= 7, "PASIVO", "DETRACTOR")),
-        )
-    df_enc_silver = normalizar_dataframe_silver(df_enc_silver, cols_ciudad=("ciudad",))
-    df_enc_silver, rech_enc = filtrar_registros_rechazados(
-        df_enc_silver,
+    nps_col = (
+        _a_int64_nullable(df_enc_orig["pregunta_recomendacion_nps_0_10"])
+        if "pregunta_recomendacion_nps_0_10" in df_enc_orig.columns
+        else pd.Series([pd.NA] * len(df_enc_orig), dtype="Int64")
+    )
+    tipo_col = (
+        df_enc_orig["tipo_encuesta"].apply(_normalizar_tipo_encuesta)
+        if "tipo_encuesta" in df_enc_orig.columns
+        else pd.Series(["POST_EVENTO"] * len(df_enc_orig))
+    )
+
+    df_enc = pd.DataFrame(
+        {
+            "id_respuesta": df_enc_orig["id_respuesta"].apply(limpiar_texto_y_mojibake),
+            "id_evento": ev_col,
+            "id_persona": df_enc_orig["id_persona"].apply(limpiar_texto_y_mojibake),
+            "id_empresa": df_enc_orig["id_empresa"].apply(limpiar_texto_y_mojibake),
+            "id_ciudad_encuesta": pd.Series(
+                [geo.resolver_id_ciudad(v) for v in df_enc_orig["ciudad"]],
+                dtype="Int64",
+            ),
+            "fecha_encuesta": df_enc_orig["fecha_encuesta"].apply(normalizar_fecha_iso),
+            "modalidad_encuesta": df_enc_orig["modalidad_encuesta"].apply(
+                lambda v: limpiar_texto_y_mojibake(v) or "Virtual"
+            ),
+            "tipo_encuesta": tipo_col,
+            "duracion_segundos": _a_int64_nullable(df_enc_orig["duracion_segundos"]),
+            "calif_locacion_o_plataforma": _a_int64_nullable(
+                df_enc_orig["calif_locacion_o_plataforma"]
+            ),
+            "calif_convocatoria_publicidad": _a_int64_nullable(
+                df_enc_orig["calif_convocatoria_publicidad"]
+            ),
+            "calif_conferencistas": _a_int64_nullable(
+                df_enc_orig["calif_conferencistas"]
+            ),
+            "calif_relevancia_temas": _a_int64_nullable(
+                df_enc_orig["calif_relevancia_temas"]
+            ),
+            "pregunta_recomendacion_nps_0_10": nps_col,
+            "temarios_sugeridos": df_enc_orig["temarios_sugeridos"].apply(
+                limpiar_texto_y_mojibake
+            ),
+            "desea_recibir_actualizaciones": df_enc_orig[
+                "desea_recibir_actualizaciones"
+            ].apply(normalizar_booleano),
+        }
+    )
+    df_enc, rech_enc = filtrar_registros_rechazados(
+        df_enc,
         "fact_encuestas_satisfaccion",
         ["id_respuesta"],
         "fact_encuestas_satisfaccion.csv",
         bitacora,
     )
-    n_sin_per = int(df_enc_silver["id_persona"].isna().sum())
-    n_sin_emp = int(df_enc_silver["id_empresa"].isna().sum())
-    guardar_tabla_medallion(df_enc_silver, cfg.silver_dir, "fact_encuestas_satisfaccion")
-    bitacora.registrar_calidad(
-        "fact_encuestas_satisfaccion",
-        "id_persona / id_empresa / id_evento",
-        tipo_inc="SIN_ASOCIACION_EVENTO_Y_RESPUESTAS_ANONIMAS",
-        val_orig=(
-            f"Sin id_evento en fuente ({len(df_enc_silver)}), "
-            f"sin id_persona ({n_sin_per}), sin id_empresa ({n_sin_emp})"
-        ),
-        val_corr=(
-            "No se infiere evento; se conservan respuestas anónimas y se "
-            "mantiene satisfacción 1-5 separada de NPS 0-10"
-        ),
-        estado="REGLA_NEGOCIO_APLICADA",
-        cant=len(df_enc_silver),
-    )
+    guardar_tabla_medallion(df_enc, cfg.silver_dir, "fact_encuestas_satisfaccion")
     bitacora.registrar_carga(
         "bronze/fact_encuestas_satisfaccion -> silver/fact_encuestas_satisfaccion",
         t0,
         leidos=len(df_enc_orig),
-        proc=len(df_enc_silver),
-        ins=len(df_enc_silver),
+        proc=len(df_enc),
+        ins=len(df_enc),
         act=0,
         rech=rech_enc,
     )
+    return df_enc
 
+
+def _procesar_fact_movimientos_crm(
+    bronze: dict[str, pd.DataFrame],
+    df_mem: pd.DataFrame,
+    mapa_cat: dict[tuple[str, str], int],
+    cfg: ConfiguracionETL,
+    bitacora: BitacoraAuditoria,
+) -> pd.DataFrame:
+    """Construye silver_fact_movimientos_crm con id_membresia opcional."""
     t1 = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     df_mov_orig = bronze["fact_movimientos_crm"].copy()
-    emp_estado_map: dict[Any, Any] = df_emp_silver.set_index("id_empresa")[
-        "estado_membresia_detalle"
-    ].to_dict()
-    df_mov_silver = df_mov_orig.copy()
-    df_mov_silver.insert(
-        0,
-        "id_movimiento",
-        [f"MOV-{i:04d}" for i in range(1, len(df_mov_silver) + 1)],
+    ult_mem = (
+        df_mem.drop_duplicates(subset=["id_empresa"], keep="last")
+        .set_index("id_empresa")["id_membresia"]
+        .to_dict()
+        if not df_mem.empty
+        else {}
     )
-    df_mov_silver["kam_valor_original"] = df_mov_silver["kam_id"]
-    df_mov_silver["kam_id"] = df_mov_silver["kam_id"].apply(
-        lambda v: homologar_kam_id(v, cfg)
+
+    mem_fks: list[str | None] = []
+    cat_fks: list[int | None] = []
+    estados_mov: list[str] = []
+    for _, m_row in df_mov_orig.iterrows():
+        t_mov = limpiar_texto_y_mojibake(m_row.get("tipo_movimiento")) or "Movimiento"
+        fact = bool(m_row.get("es_cierre_facturado", False))
+        emp_id = limpiar_texto_y_mojibake(m_row.get("id_empresa")) or ""
+        mem_fks.append(
+            None if (t_mov == "Trato en Estado" or not fact) else ult_mem.get(emp_id)
+        )
+        cat_fks.append(
+            mapa_cat.get(_homologar_par_categoria(None, m_row.get("nivel_membresia")))
+        )
+        estados_mov.append(
+            "Cerrado Facturado" if fact else "En gestión / Oportunidad CRM"
+        )
+
+    df_mov = pd.DataFrame(
+        {
+            "id_movimiento": [
+                f"MOV-{idx:04d}" for idx in range(1, len(df_mov_orig) + 1)
+            ],
+            "id_empresa": df_mov_orig["id_empresa"].apply(limpiar_texto_y_mojibake),
+            "id_membresia": mem_fks,
+            "kam_id": df_mov_orig["kam_id"].apply(lambda v: homologar_kam_id(v, cfg)),
+            "id_persona_contacto": df_mov_orig["id_persona_contacto"].apply(
+                limpiar_texto_y_mojibake
+            ),
+            "id_cat_membresia_movimiento": pd.Series(cat_fks, dtype="Int64"),
+            "tipo_movimiento": df_mov_orig["tipo_movimiento"].apply(
+                lambda v: limpiar_texto_y_mojibake(v) or "Movimiento CRM"
+            ),
+            "estado_movimiento_crm": estados_mov,
+            "es_cierre_facturado": df_mov_orig["es_cierre_facturado"].eq(True),
+            "fecha_cierre_o_factura": df_mov_orig["fecha_cierre_o_factura"].apply(
+                normalizar_fecha_iso
+            ),
+            "fecha_expiracion_afiliacion": df_mov_orig[
+                "fecha_expiracion_afiliacion"
+            ].apply(normalizar_fecha_iso),
+        }
     )
-    df_mov_silver["estado_afiliacion_empresa"] = (
-        df_mov_silver["id_empresa"].map(emp_estado_map).fillna("Sin dato")
-    )
-    df_mov_silver["clasificacion_fecha_expiracion"] = df_mov_silver.apply(
-        _clasificar_expiracion_nula, axis=1
-    )
-    df_mov_silver, rech_mov = filtrar_registros_rechazados(
-        df_mov_silver,
+    df_mov, rech_mov = filtrar_registros_rechazados(
+        df_mov,
         "fact_movimientos_crm",
         ["id_movimiento"],
         "fact_movimientos_crm.csv",
         bitacora,
     )
-    guardar_tabla_medallion(df_mov_silver, cfg.silver_dir, "fact_movimientos_crm")
+    guardar_tabla_medallion(df_mov, cfg.silver_dir, "fact_movimientos_crm")
     bitacora.registrar_carga(
         "bronze/fact_movimientos_crm -> silver/fact_movimientos_crm",
         t1,
         leidos=len(df_mov_orig),
-        proc=len(df_mov_silver),
-        ins=len(df_mov_silver),
-        act=len(df_mov_silver),
+        proc=len(df_mov),
+        ins=len(df_mov),
+        act=len(df_mov),
         rech=rech_mov,
     )
-    return df_enc_silver, df_mov_silver
+    return df_mov
 
 
 def procesar_capa_silver(
@@ -697,45 +674,38 @@ def procesar_capa_silver(
     cfg: ConfiguracionETL,
     bitacora: BitacoraAuditoria,
 ) -> dict[str, pd.DataFrame]:
-    """Ejecuta la construcción de todas las tablas de la capa Silver.
-
-    Args:
-        bronze: Diccionario de DataFrames validados en Bronze.
-        cfg: Configuración del pipeline ETL Medallion.
-        bitacora: Bitácora de auditoría activa.
-
-    Returns:
-        Diccionario con todos los DataFrames generados en la capa Silver.
-
-    """
+    """Ejecuta la construcción completa de las 13 entidades de la capa Silver."""
+    _limpiar_archivos_legado_silver(cfg)
+    geo = _persistir_geografia(bronze, cfg, bitacora)
     df_kams = _procesar_dim_kams(bronze, cfg, bitacora)
-    df_emp, df_emp_scd2 = _procesar_dim_empresas(bronze, cfg, bitacora)
-    df_per, df_ev = _procesar_dim_personas_y_eventos(bronze, cfg, bitacora)
-    df_asist = _procesar_fact_asistencias(bronze, df_ev, cfg, bitacora)
-    df_enc, df_mov = _procesar_encuestas_y_movimientos(bronze, df_emp, cfg, bitacora)
-
-    df_emp = normalizar_dataframe_silver(
-        df_emp,
-        cols_texto=("sector_economico", "subsector_economico", "ciudad"),
+    df_emp, dim_cat, df_mem, mapa_cat = _procesar_empresas_y_membresias(
+        bronze, geo, cfg, bitacora
     )
-    if cfg.bronze_raw_dir.exists():
-        n_raw = len(list(cfg.bronze_raw_dir.rglob("*.csv")))
-        if n_raw > 0:
-            bitacora.registrar_calidad(
-                "silver_normalizer",
-                "fuentes_crudas_bronze",
-                tipo_inc="NORMALIZACION_EN_SILVER",
-                cant=n_raw,
-                val_orig=f"{n_raw} archivos CSV crudos en bronze/raw_csv",
-                val_corr="Estandarización de textos, fechas ISO y booleanos en Silver",
-                estado="APLICADO_EN_SILVER",
-            )
+    df_per, df_bridge, mapa_vinculo = _procesar_personas_y_puente(
+        bronze, df_emp, geo, cfg, bitacora
+    )
+    df_ev = _procesar_dim_eventos(bronze, geo, cfg, bitacora)
+    df_asist = _procesar_fact_asistencias(
+        bronze,
+        geo,
+        mapa_vinculo,
+        set(df_kams["kam_id"]),
+        cfg=cfg,
+        bitacora=bitacora,
+    )
+    df_enc = _procesar_fact_encuestas(bronze, geo, cfg, bitacora)
+    df_mov = _procesar_fact_movimientos_crm(bronze, df_mem, mapa_cat, cfg, bitacora)
 
     return {
+        "dim_pais": geo.dim_pais,
+        "dim_departamento": geo.dim_departamento,
+        "dim_ciudad": geo.dim_ciudad,
         "dim_kams": df_kams,
         "dim_empresas": df_emp,
-        "dim_empresas_scd2": df_emp_scd2,
+        "dim_catalogo_membresia": dim_cat,
+        "membresias": df_mem,
         "dim_personas": df_per,
+        "bridge_persona_empresa": df_bridge,
         "dim_eventos": df_ev,
         "fact_asistencias": df_asist,
         "fact_encuestas_satisfaccion": df_enc,

@@ -62,10 +62,13 @@ def get_silver_filters(db: Session = Depends(get_db)) -> dict[str, list[str]]:
             "kams",
             "niveles_membresia",
             "sectores",
+            "subsectores",
             "tamanos_empresa",
+            "rangos_empleados",
             "estados_membresia",
             "ciudades",
             "paises",
+            "semaforos_riesgo",
         )
     }
 
@@ -75,41 +78,30 @@ def get_silver_portfolio(
     kam_id: str | None = None,
     nivel_membresia: str | None = None,
     sector: str | None = None,
+    subsector: str | None = None,
     tamano_empresa: str | None = None,
+    rango_empleados: str | None = None,
     estado_membresia: str | None = None,
     ciudad: str | None = None,
     pais: str | None = None,
+    semaforo: str | None = None,
     solo_activos: bool = True,
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    """Lista cartera de afiliados desde Silver con filtros comerciales.
-
-    Args:
-        kam_id: Identificador opcional de la ejecutiva de cuenta.
-        nivel_membresia: Nivel de membresía opcional.
-        sector: Sector económico opcional.
-        tamano_empresa: Tamaño de empresa opcional.
-        estado_membresia: Estado detallado de membresía opcional.
-        ciudad: Ciudad opcional.
-        solo_activos: Si es True, incluye solo membresías activas.
-        offset: Desplazamiento para paginación.
-        limit: Máximo de empresas a devolver.
-        db: Sesión PostgreSQL inyectada mediante ``Depends(get_db)``.
-
-    Returns:
-        Página de empresas con información comercial y de vigencia.
-
-    """
+    """Lista cartera de afiliados desde el DWH con filtros comerciales."""
     return DashboardSilverRepository(db).listar_afiliados(
         kam_id=kam_id,
         nivel_membresia=nivel_membresia,
         sector=sector,
+        subsector=subsector,
         tamano_empresa=tamano_empresa,
+        rango_empleados=rango_empleados,
         estado_membresia=estado_membresia,
         ciudad=ciudad,
         pais=pais,
+        semaforo=semaforo,
         solo_activos=solo_activos,
         offset=offset,
         limit=limit,
@@ -173,55 +165,35 @@ def get_silver_pillars(
 
 @affiliates_router.get("/silver/kam-summary")
 def get_silver_kam_summary(
-    fecha_referencia: date = Query(default_factory=date.today),
+    fecha_referencia: date = Query(default=date(2026, 11, 13)),
     db: Session = Depends(get_db),
 ) -> list[dict[str, Any]]:
-    """Retorna comparativa de cartera, participación y renovaciones por KAM.
-
-    Args:
-        fecha_referencia: Fecha base para calcular vencimientos a 90 días.
-        db: Sesión PostgreSQL inyectada mediante ``Depends(get_db)``.
-
-    Returns:
-        Lista ordenada de métricas comerciales y de servicio por ejecutiva KAM.
-
-    """
+    """Retorna comparativa de cartera, participación y renovaciones por KAM."""
     return DashboardSilverRepository(db).obtener_resumen_kams(fecha_referencia)
 
 
 @affiliates_router.get("/silver/distribution")
 def get_silver_distribution(
-    fecha_referencia: date = Query(default_factory=date.today),
+    fecha_referencia: date = Query(default=date(2026, 11, 13)),
     kam_id: str | None = None,
     nivel_membresia: str | None = None,
     sector: str | None = None,
+    subsector: str | None = None,
     tamano_empresa: str | None = None,
+    rango_empleados: str | None = None,
     ciudad: str | None = None,
     pais: str | None = None,
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    """Retorna distribución de activos (nivel/sector/tamaño) y vencimientos 30/60/90d.
-
-    Args:
-        fecha_referencia: Fecha base para calcular buckets de vencimiento.
-        kam_id: Identificador opcional de la ejecutiva KAM.
-        nivel_membresia: Nivel de membresía opcional.
-        sector: Sector económico opcional.
-        tamano_empresa: Tamaño de empresa opcional.
-        ciudad: Ciudad opcional.
-        pais: País opcional.
-        db: Sesión PostgreSQL inyectada mediante ``Depends(get_db)``.
-
-    Returns:
-        Distribución por nivel, sector, tamaño y curva de vencimientos global/KAM.
-
-    """
+    """Retorna distribución de activos y curva de vencimientos 30/60/90 días."""
     return DashboardSilverRepository(db).obtener_distribucion_afiliados(
         fecha_referencia=fecha_referencia,
         kam_id=kam_id,
         nivel_membresia=nivel_membresia,
         sector=sector,
+        subsector=subsector,
         tamano_empresa=tamano_empresa,
+        rango_empleados=rango_empleados,
         ciudad=ciudad,
         pais=pais,
     )

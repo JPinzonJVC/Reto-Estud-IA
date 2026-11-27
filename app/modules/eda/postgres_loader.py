@@ -1,4 +1,4 @@
-"""Cargador transaccional e idempotente (UPSERT masivo) hacia PostgreSQL."""
+"""Cargador transaccional e idempotente (UPSERT masivo) para las 25 tablas DWH."""
 
 from typing import Any
 
@@ -13,21 +13,26 @@ from app.database import Base, get_engine
 from app.modules.eda import models as _models  # noqa: F401
 
 ORDEN_CARGA_TABLAS: tuple[tuple[str, str], ...] = (
+    ("silver", "dim_pais"),
+    ("silver", "dim_departamento"),
+    ("silver", "dim_ciudad"),
     ("silver", "dim_kams"),
     ("silver", "dim_empresas"),
-    ("silver", "dim_empresas_scd2"),
+    ("silver", "dim_catalogo_membresia"),
+    ("silver", "membresias"),
     ("silver", "dim_personas"),
+    ("silver", "bridge_persona_empresa"),
     ("silver", "dim_eventos"),
     ("silver", "fact_asistencias"),
     ("silver", "fact_encuestas_satisfaccion"),
     ("silver", "fact_movimientos_crm"),
-    ("gold", "agg_participacion_empresa"),
-    ("gold", "agg_participacion_eventos"),
-    ("gold", "agg_satisfaccion_encuestas"),
-    ("gold", "agg_retencion_empresa"),
-    ("gold", "agg_segmentos_comunicaciones"),
+    ("gold", "dim_empresa_360"),
+    ("gold", "dim_evento_kpis"),
+    ("gold", "fact_asistencias_bi"),
+    ("gold", "fact_encuestas_bi"),
+    ("gold", "fact_evolucion_membresias_mes"),
+    ("gold", "mart_segmentos_comunicaciones"),
     ("audit", "audit_hashes_fuentes_bronze"),
-    ("audit", "audit_registros_duplicados"),
     ("audit", "audit_registros_rechazados"),
     ("audit", "audit_calidad_datos"),
     ("audit", "audit_reconciliacion_origen_destino"),
@@ -36,21 +41,26 @@ ORDEN_CARGA_TABLAS: tuple[tuple[str, str], ...] = (
 )
 
 MAPA_NOMBRE_TABLA_SQL: dict[str, str] = {
+    "dim_pais": "silver_dim_pais",
+    "dim_departamento": "silver_dim_departamento",
+    "dim_ciudad": "silver_dim_ciudad",
     "dim_kams": "silver_dim_kams",
     "dim_empresas": "silver_dim_empresas",
-    "dim_empresas_scd2": "silver_dim_empresas_scd2",
+    "dim_catalogo_membresia": "silver_dim_catalogo_membresia",
+    "membresias": "silver_membresias",
     "dim_personas": "silver_dim_personas",
+    "bridge_persona_empresa": "silver_bridge_persona_empresa",
     "dim_eventos": "silver_dim_eventos",
     "fact_asistencias": "silver_fact_asistencias",
     "fact_encuestas_satisfaccion": "silver_fact_encuestas_satisfaccion",
     "fact_movimientos_crm": "silver_fact_movimientos_crm",
-    "agg_participacion_empresa": "gold_agg_participacion_empresa",
-    "agg_participacion_eventos": "gold_agg_participacion_eventos",
-    "agg_satisfaccion_encuestas": "gold_agg_satisfaccion_encuestas",
-    "agg_retencion_empresa": "gold_agg_retencion_empresa",
-    "agg_segmentos_comunicaciones": "gold_agg_segmentos_comunicaciones",
+    "dim_empresa_360": "gold_dim_empresa_360",
+    "dim_evento_kpis": "gold_dim_evento_kpis",
+    "fact_asistencias_bi": "gold_fact_asistencias_bi",
+    "fact_encuestas_bi": "gold_fact_encuestas_bi",
+    "fact_evolucion_membresias_mes": "gold_fact_evolucion_membresias_mes",
+    "mart_segmentos_comunicaciones": "gold_mart_segmentos_comunicaciones",
     "audit_hashes_fuentes_bronze": "audit_hashes_fuentes_bronze",
-    "audit_registros_duplicados": "audit_registros_duplicados",
     "audit_registros_rechazados": "audit_registros_rechazados",
     "audit_calidad_datos": "audit_calidad_datos",
     "audit_reconciliacion_origen_destino": "audit_reconciliacion_origen_destino",
@@ -58,15 +68,66 @@ MAPA_NOMBRE_TABLA_SQL: dict[str, str] = {
     "audit_ejecuciones_etl": "audit_ejecuciones_etl",
 }
 
+TABLAS_OBSOLETAS_LEGADO: tuple[str, ...] = (
+    "gold_agg_segmentos_comunicaciones",
+    "gold_agg_participacion_eventos",
+    "gold_agg_satisfaccion_encuestas",
+    "gold_agg_retencion_empresa",
+    "gold_agg_participacion_empresa",
+    "silver_dim_empresas_scd2",
+    "audit_registros_duplicados",
+)
+
+TABLAS_REEMPLAZADAS_V3: tuple[str, ...] = (
+    *TABLAS_OBSOLETAS_LEGADO,
+    "silver_fact_movimientos_crm",
+    "silver_fact_encuestas_satisfaccion",
+    "silver_fact_asistencias",
+    "silver_dim_eventos",
+    "silver_dim_personas",
+    "silver_dim_empresas",
+    "silver_dim_kams",
+)
+
+
+def _requiere_reemplazo_esquema_v3(inspector: Any, existentes: set[str]) -> bool:
+    """Detecta si la base de datos aún conserva columnas NOT NULL del modelo legado."""
+    huellas_legado = (
+        ("silver_dim_kams", "es_kam_asignado"),
+        ("silver_dim_empresas", "es_membresia_activa"),
+        ("silver_dim_eventos", "fecha_evento"),
+        ("silver_fact_asistencias", "es_afiliado"),
+    )
+    for tabla, col_antigua in huellas_legado:
+        if tabla in existentes:
+            cols = {c["name"] for c in inspector.get_columns(tabla)}
+            if col_antigua in cols:
+                return True
+    return False
+
 
 def inicializar_esquema_medallion(engine: Engine | None = None) -> None:
-    """Crea las tablas Medallion y sincroniza columnas nuevas si no existen.
+    """Sincroniza el esquema de las 25 tablas DWH y purga tablas obsoletas.
 
     Args:
         engine: Instancia opcional de Engine. Si es None, usa get_engine().
 
     """
     target_engine = engine or get_engine()
+    inspector = inspect(target_engine)
+    tablas_existentes = set(inspector.get_table_names())
+    sufijo = " CASCADE" if target_engine.dialect.name == "postgresql" else ""
+    a_eliminar = (
+        TABLAS_REEMPLAZADAS_V3
+        if _requiere_reemplazo_esquema_v3(inspector, tablas_existentes)
+        else TABLAS_OBSOLETAS_LEGADO
+    )
+
+    with target_engine.begin() as conn:
+        for obsoleta in a_eliminar:
+            if obsoleta in tablas_existentes:
+                conn.execute(text(f"DROP TABLE IF EXISTS {obsoleta}{sufijo}"))
+
     Base.metadata.create_all(bind=target_engine)
     inspector = inspect(target_engine)
     tablas_existentes = set(inspector.get_table_names())

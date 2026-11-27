@@ -1,2 +1,1 @@
-"""Consultas Silver preparadas para el tablero ACTHO."""
-
+"""Módulo de consultas y enrutamiento para el Dashboard analítico ACTHO 360."""

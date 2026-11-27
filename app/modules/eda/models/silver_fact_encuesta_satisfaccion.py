@@ -1,93 +1,79 @@
-"""Modelo ORM para encuestas de satisfacción (silver_fact_encuestas_satisfaccion)."""
+"""Modelo SQLAlchemy ORM para encuestas (silver_fact_encuestas_satisfaccion)."""
 
-from sqlalchemy import Boolean, Column, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Text
 
 from app.database import Base
 
 
 class SilverFactEncuestaSatisfaccion(Base):  # type: ignore[misc,valid-type]
-    """Tabla de hechos de encuestas de satisfacción en la capa Silver."""
+    """Tabla de hechos de respuestas individuales a encuestas en Silver."""
 
     __tablename__ = "silver_fact_encuestas_satisfaccion"
 
     id_respuesta = Column(String(64), primary_key=True)
-    """Identificador único de la respuesta de encuesta (EP-xxxx o EV-xxxx)."""
+    """Identificador único de la respuesta (EP-xxxx o EV-xxxx)."""
 
-    modalidad_encuesta = Column(String(64), nullable=True)
-    """Modalidad del formulario de encuesta (Presencial o Virtual)."""
-
-    es_modalidad_presencial = Column(Boolean, nullable=True)
-    """Indica si la encuesta corresponde al formulario de eventos presenciales."""
-
-    id_evento = Column(Integer, nullable=True)
-    """Identificador del evento (nulo en fuentes históricas sin captura de evento)."""
-
-    fecha_encuesta = Column(String(32), nullable=True)
-    """Fecha de diligenciamiento de la encuesta en formato ISO YYYY-MM-DD."""
-
-    periodo_mes_iso = Column(String(32), nullable=True)
-    """Periodo mensual de la respuesta en formato YYYY-MM."""
-
-    fecha_hora_inicio = Column(String(64), nullable=True)
-    """Marca temporal de inicio de respuesta del formulario."""
-
-    fecha_hora_fin = Column(String(64), nullable=True)
-    """Marca temporal de finalización del formulario."""
-
-    duracion_segundos = Column(Integer, nullable=True)
-    """Tiempo empleado para responder la encuesta en segundos."""
-
-    calif_locacion_o_plataforma = Column(Integer, nullable=True)
-    """Calificación Likert (1 a 5) de la locación física o plataforma virtual."""
-
-    calif_convocatoria_publicidad = Column(Integer, nullable=True)
-    """Calificación Likert (1 a 5) del proceso de convocatoria y publicidad."""
-
-    calif_conferencistas = Column(Integer, nullable=True)
-    """Calificación Likert (1 a 5) de los conferencistas o panelistas."""
-
-    calif_relevancia_temas = Column(Integer, nullable=True)
-    """Calificación Likert (1 a 5) de la pertinencia y relevancia de los temas."""
-
-    promedio_satisfaccion = Column(Float, nullable=True)
-    """Promedio aritmético de satisfacción general del encuestado en escala 1 a 5."""
-
-    temarios_sugeridos = Column(Text, nullable=True)
-    """Comentarios abiertos o temarios sugeridos por el participante."""
-
-    desea_recibir_actualizaciones = Column(Boolean, nullable=True)
-    """Indica si el participante autorizó recibir actualizaciones y dejó sus datos."""
+    id_evento = Column(
+        Integer,
+        ForeignKey("silver_dim_eventos.id_evento"),
+        nullable=True,
+        index=True,
+    )
+    """Clave foránea opcional hacia el evento (NULL en fuentes sin captura)."""
 
     id_persona = Column(
-        String(64), ForeignKey("silver_dim_personas.id_persona"), nullable=True
+        String(64),
+        ForeignKey("silver_dim_personas.id_persona"),
+        nullable=True,
+        index=True,
     )
-    """Clave foránea opcional hacia silver_dim_personas (nula en anónimas)."""
+    """Clave foránea opcional hacia la persona (NULL en encuestas anónimas)."""
 
     id_empresa = Column(
-        String(64), ForeignKey("silver_dim_empresas.id_empresa"), nullable=True
+        String(64),
+        ForeignKey("silver_dim_empresas.id_empresa"),
+        nullable=True,
+        index=True,
     )
-    """Clave foránea opcional hacia silver_dim_empresas."""
+    """Clave foránea opcional hacia la empresa cuando existe asociación confiable."""
 
-    ciudad = Column(String(128), nullable=True)
-    """Ciudad asociada al participante encuestado."""
+    id_ciudad_encuesta = Column(
+        Integer,
+        ForeignKey("silver_dim_ciudad.id_ciudad"),
+        nullable=True,
+        index=True,
+    )
+    """Clave foránea opcional hacia la ciudad reportada en la respuesta."""
 
-    empresa_en_crm = Column(Boolean, nullable=True)
-    """Indica si la empresa identificada existe en el maestro del CRM."""
+    fecha_encuesta = Column(String(32), nullable=False)
+    """Fecha ISO YYYY-MM-DD de diligenciamiento de la encuesta."""
 
-    metodo_asignacion_empresa = Column(String(128), nullable=True)
-    """Método utilizado para vincular la empresa (dominio, nombre o sin datos)."""
+    modalidad_encuesta = Column(String(64), nullable=False)
+    """Modalidad del instrumento ('Presencial' o 'Virtual')."""
 
-    estado_resolucion_identidad = Column(String(64), nullable=True)
-    """Clasificación de resolución de identidad (completa, parcial o anónima)."""
+    tipo_encuesta = Column(String(64), nullable=False)
+    """Tipología de la encuesta ('POST_EVENTO' o 'ENCUESTA_90_DIAS')."""
 
-    tipo_encuesta = Column(String(64), nullable=True)
-    """Tipología del instrumento (ENCUESTA_POST_EVENTO_SATISFACCION_1_5)."""
+    duracion_segundos = Column(Integer, nullable=True)
+    """Duración en segundos empleada para responder el formulario."""
 
-    categoria_nps_adaptado_1_5 = Column(String(64), nullable=True)
-    """Clasificación NPS adaptado 1-5 (PROMOTOR: 4-5, NEUTRO: 3, DETRACTOR: 1-2)."""
+    calif_locacion_o_plataforma = Column(Integer, nullable=True)
+    """Calificación Likert (1 a 5) de locación física o plataforma virtual."""
 
-    pregunta_recomendacion_nps_0_10 = Column(Float, nullable=True)
-    """Calificación de recomendación NPS en escala 0 a 10 cuando esté disponible."""
+    calif_convocatoria_publicidad = Column(Integer, nullable=True)
+    """Calificación Likert (1 a 5) de convocatoria y publicidad."""
 
-    categoria_nps_0_10 = Column(String(64), nullable=True)
-    """Categoría NPS 0-10 (Promotor, Pasivo, Detractor o NO_DISPONIBLE_ESCALA_1_5)."""
+    calif_conferencistas = Column(Integer, nullable=True)
+    """Calificación Likert (1 a 5) de conferencistas o panelistas."""
+
+    calif_relevancia_temas = Column(Integer, nullable=True)
+    """Calificación Likert (1 a 5) de pertinencia y relevancia de temas."""
+
+    pregunta_recomendacion_nps_0_10 = Column(Integer, nullable=True)
+    """Calificación entera (0 a 10) de recomendación NPS cuando esté disponible."""
+
+    temarios_sugeridos = Column(Text, nullable=True)
+    """Comentarios abiertos y temas solicitados por el participante."""
+
+    desea_recibir_actualizaciones = Column(Boolean, nullable=True)
+    """Indica autorización para recibir comunicaciones y actualizaciones."""

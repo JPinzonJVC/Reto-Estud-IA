@@ -1,786 +1,542 @@
-"""Servicio de monitoreo de Prefect y trazabilidad del pipeline Medallion."""
+"""Servicio de monitoreo Prefect y trazabilidad del DWH Medallion ACTHO 360."""
 
-from __future__ import annotations
-
-import json
-import urllib.request
-from datetime import datetime, timedelta
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+import pandas as pd
 from sqlalchemy import desc, text
 from sqlalchemy.orm import Session
 
 from app.env_vars import GoogleDriveEnvs, OrchestrationEnvs, ZohoEnvs
-from app.modules.eda.models.audit_calidad_datos import AuditCalidadDatos
-from app.modules.eda.models.audit_carga import AuditCarga
-from app.modules.eda.models.audit_ejecucion_etl import AuditEjecucionEtl
-from app.modules.eda.models.audit_hash_fuente_bronze import AuditHashFuenteBronze
-from app.modules.eda.models.audit_ingestion_watermark import AuditIngestionWatermark
-from app.modules.eda.models.audit_reconciliacion_origen_destino import (
+from app.modules.eda.models import (
+    AuditCalidadDatos,
+    AuditCarga,
+    AuditEjecucionEtl,
+    AuditHashFuenteBronze,
+    AuditIngestionWatermark,
     AuditReconciliacionOrigenDestino,
+    AuditRegistroRechazado,
 )
-from app.modules.eda.models.audit_registro_duplicado import AuditRegistroDuplicado
-from app.modules.eda.models.audit_registro_rechazado import AuditRegistroRechazado
+from app.modules.eda.monitor_prefect_api import (
+    actualizar_cron_prefect,
+    calcular_proxima_ejecucion,
+    consultar_prefect_live,
+    describir_cron,
+    disparar_corrida_prefect,
+    formatear_delta_es,
+    parsear_ts,
+)
 from app.modules.eda.postgres_loader import MAPA_NOMBRE_TABLA_SQL
 
-DIAS_SEMANA_ES: dict[int, str] = {
-    0: "Lunes",
-    1: "Martes",
-    2: "Miércoles",
-    3: "Jueves",
-    4: "Viernes",
-    5: "Sábado",
-    6: "Domingo",
-}
-
+ROOT_INPUT = Path(__file__).resolve().parents[3] / "input"
 ALLOWED_OUTPUT_TABLES: frozenset[str] = frozenset(MAPA_NOMBRE_TABLA_SQL.values())
 
-
-def _parse_cron_field(field: str, min_val: int, max_val: int) -> set[int]:
-    """Expande un campo cron estándar (*, */n, a-b, a,b) a un conjunto de enteros."""
-    result: set[int] = set()
-    for part in field.split(","):
-        part = part.strip()
-        if not part:
-            continue
-        step = 1
-        if "/" in part:
-            base, step_str = part.split("/", 1)
-            step = max(1, int(step_str))
-        else:
-            base = part
-        if base == "*":
-            start, end = min_val, max_val
-        elif "-" in base:
-            s_str, e_str = base.split("-", 1)
-            start, end = int(s_str), int(e_str)
-        else:
-            val = int(base)
-            start, end = val, val
-        for num in range(max(min_val, start), min(max_val, end) + 1, step):
-            result.add(num)
-    return result
-
-
-def calcular_proxima_ejecucion(cron_expr: str, tz_name: str) -> datetime | None:
-    """Calcula la próxima ejecución de una expresión cron de 5 campos."""
-    parts = cron_expr.strip().split()
-    if len(parts) != 5:
-        return None
-    try:
-        tz = ZoneInfo(tz_name)
-    except Exception:
-        tz = ZoneInfo("UTC")
-
-    try:
-        minutes = _parse_cron_field(parts[0], 0, 59)
-        hours = _parse_cron_field(parts[1], 0, 23)
-        doms = _parse_cron_field(parts[2], 1, 31)
-        months = _parse_cron_field(parts[3], 1, 12)
-        dows_raw = _parse_cron_field(parts[4], 0, 7)
-        # Cron: 0 o 7 = Domingo; Python weekday(): 0 = Lunes .. 6 = Domingo
-        dows = {(d - 1) % 7 for d in dows_raw}
-    except ValueError:
-        return None
-
-    now = datetime.now(tz).replace(second=0, microsecond=0) + timedelta(minutes=1)
-    # Buscar hasta 370 días hacia adelante
-    cursor = now
-    for _ in range(370 * 24):
-        if (
-            cursor.month in months
-            and cursor.day in doms
-            and cursor.weekday() in dows
-            and cursor.hour in hours
-        ):
-            for minute in sorted(minutes):
-                candidate = cursor.replace(minute=minute)
-                if candidate >= now:
-                    return candidate
-        cursor = (cursor + timedelta(hours=1)).replace(minute=0)
-    return None
-
-
-def describir_cron(cron_expr: str) -> str:
-    """Genera una etiqueta legible en español para expresiones cron frecuentes."""
-    parts = cron_expr.strip().split()
-    if len(parts) != 5:
-        return cron_expr
-    minute, hour, dom, month, dow = parts
-    if minute.isdigit() and hour.isdigit() and dom == "*" and month == "*":
-        hora_txt = f"{int(hour):02d}:{int(minute):02d}"
-        if dow == "*":
-            return f"Diario · {hora_txt}"
-        if dow.isdigit():
-            dia_py = (int(dow) - 1) % 7
-            return f"Semanal · {DIAS_SEMANA_ES.get(dia_py, dow)} {hora_txt}"
-    return f"Cron · {cron_expr}"
-
-
-def _format_delta_es(seconds: float, *, future: bool = False) -> str:
-    """Formatea una duración en segundos como 'hace X h Y m' o 'en X d Y h'."""
-    total = int(abs(seconds))
-    days, rem = divmod(total, 86400)
-    hours, rem = divmod(rem, 3600)
-    mins, secs = divmod(rem, 60)
-    if days > 0:
-        body = f"{days}d {hours}h"
-    elif hours > 0:
-        body = f"{hours}h {mins}m"
-    elif mins > 0:
-        body = f"{mins}m {secs}s"
-    else:
-        body = f"{secs}s"
-    return f"en {body}" if future else f"hace {body}"
-
-
-def _parse_ts(ts_str: str | None, tz: ZoneInfo) -> datetime | None:
-    """Parsea timestamps ISO/auditoría (asumiendo UTC si son naive) y convierte a tz."""
-    if not ts_str:
-        return None
-    cleaned = ts_str.strip().replace("Z", "+00:00")
-    try:
-        dt = datetime.fromisoformat(cleaned)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=ZoneInfo("UTC"))
-        return dt.astimezone(tz)
-    except ValueError:
-        pass
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
-        try:
-            return (
-                datetime.strptime(cleaned[:19], fmt)
-                .replace(tzinfo=ZoneInfo("UTC"))
-                .astimezone(tz)
-            )
-        except ValueError:
-            continue
-    return None
-
-
-def _consultar_prefect_live(api_url: str) -> dict[str, Any]:
-    """Consulta opcionalmente la API de Prefect Server (flow runs y task runs)."""
-    candidatos = [api_url.rstrip("/")]
-    if "localhost:4200" in candidatos[0] or "127.0.0.1:4200" in candidatos[0]:
-        candidatos.append("http://prefect-server:4200/api")
-
-    payload = json.dumps(
-        {
-            "flow_runs": {
-                "state": {
-                    "type": {
-                        "any_": ["RUNNING", "COMPLETED", "FAILED", "CRASHED"]
-                    }
-                }
-            },
-            "limit": 10,
-            "sort": "START_TIME_DESC",
-        }
-    ).encode("utf-8")
-    for base in candidatos:
-        url = f"{base}/flow_runs/filter"
-        req = urllib.request.Request(
-            url,
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=1.2) as resp:
-                runs = json.loads(resp.read().decode("utf-8"))
-                runs_list = runs if isinstance(runs, list) else []
-                task_runs: list[dict[str, Any]] = []
-                # Consultar task runs del flow run más reciente ejecutado/activo
-                active_run = next(
-                    (
-                        r
-                        for r in runs_list
-                        if str(r.get("state_type", "")).upper()
-                        in {"RUNNING", "COMPLETED", "FAILED"}
-                    ),
-                    None,
-                )
-                if active_run and active_run.get("id"):
-                    t_payload = json.dumps(
-                        {
-                            "task_runs": {
-                                "flow_run_id": {"any_": [active_run["id"]]}
-                            },
-                            "limit": 20,
-                        }
-                    ).encode("utf-8")
-                    t_req = urllib.request.Request(
-                        f"{base}/task_runs/filter",
-                        data=t_payload,
-                        headers={"Content-Type": "application/json"},
-                        method="POST",
-                    )
-                    try:
-                        with urllib.request.urlopen(t_req, timeout=1.2) as t_resp:
-                            t_data = json.loads(t_resp.read().decode("utf-8"))
-                            if isinstance(t_data, list):
-                                task_runs = t_data
-                    except Exception:
-                        task_runs = []
-                # Consultar deployment activo para leer cron/schedule real en Prefect
-                active_cron: str | None = None
-                active_tz: str | None = None
-                dep_id: str | None = None
-                sched_id: str | None = None
-                dep_req = urllib.request.Request(
-                    f"{base}/deployments/filter",
-                    data=json.dumps({"limit": 10}).encode("utf-8"),
-                    headers={"Content-Type": "application/json"},
-                    method="POST",
-                )
-                try:
-                    with urllib.request.urlopen(dep_req, timeout=1.2) as d_resp:
-                        deps = json.loads(d_resp.read().decode("utf-8"))
-                        if isinstance(deps, list) and deps:
-                            dep = deps[0]
-                            dep_id = dep.get("id")
-                            scheds = dep.get("schedules") or []
-                            if scheds:
-                                sched_id = scheds[0].get("id")
-                                sch = scheds[0].get("schedule") or {}
-                                active_cron = sch.get("cron")
-                                active_tz = sch.get("timezone")
-                except Exception:
-                    pass
-                return {
-                    "connected": True,
-                    "api_url": base,
-                    "flow_runs": runs_list,
-                    "latest_executed_run": active_run,
-                    "task_runs": task_runs,
-                    "deployment_id": dep_id,
-                    "schedule_id": sched_id,
-                    "active_cron": active_cron,
-                    "active_timezone": active_tz,
-                }
-        except Exception:
-            continue
-    return {
-        "connected": False,
-        "api_url": candidatos[0],
-        "flow_runs": [],
-        "latest_executed_run": None,
-        "task_runs": [],
-        "deployment_id": None,
-        "schedule_id": None,
-        "active_cron": None,
-        "active_timezone": None,
-    }
-
-
-def actualizar_cron_prefect(
-    cron_expr: str,
-    timezone: str | None = None,
-) -> dict[str, Any]:
-    """Actualiza el cron del deployment activo en Prefect Server en caliente.
-
-    Args:
-        cron_expr: Expresión cron válida de 5 campos (ej. '*/5 * * * *').
-        timezone: Zona horaria IANA opcional (por defecto EDA_SCHEDULE_TIMEZONE).
-
-    Returns:
-        Diccionario con cron aplicado, zona horaria y próxima ejecución calculada.
-
-    Raises:
-        ValueError: Si la expresión cron no es válida.
-        RuntimeError: Si Prefect Server no está accesible o no tiene deployment.
-
-    """
-    cleaned = " ".join(cron_expr.strip().split())
-    if len(cleaned.split(" ")) != 5:
-        raise ValueError("El cron debe tener exactamente 5 campos (ej. '*/5 * * * *').")
-    orch = OrchestrationEnvs()
-    tz_name = (timezone or orch.schedule_timezone).strip()
-    next_dt = calcular_proxima_ejecucion(cleaned, tz_name)
-    if next_dt is None:
-        raise ValueError(f"Expresión cron inválida o sin próximas ejecuciones: '{cleaned}'.")
-
-    live = _consultar_prefect_live(orch.prefect_api_url)
-    if not live["connected"] or not live["deployment_id"]:
-        raise RuntimeError(
-            "No fue posible conectar con Prefect Server o no existe deployment activo."
-        )
-
-    base = live["api_url"].rstrip("/")
-    dep_id = live["deployment_id"]
-    sched_id = live["schedule_id"]
-    schedule_obj = {"cron": cleaned, "timezone": tz_name, "day_or": True}
-
-    if sched_id:
-        url = f"{base}/deployments/{dep_id}/schedules/{sched_id}"
-        body = json.dumps({"active": True, "schedule": schedule_obj}).encode("utf-8")
-        method = "PATCH"
-    else:
-        url = f"{base}/deployments/{dep_id}/schedules"
-        body = json.dumps([{"active": True, "schedule": schedule_obj}]).encode("utf-8")
-        method = "POST"
-
-    req = urllib.request.Request(
-        url,
-        data=body,
-        headers={"Content-Type": "application/json"},
-        method=method,
-    )
-    with urllib.request.urlopen(req, timeout=3.0) as resp:
-        if resp.status not in (200, 201, 204):
-            raise RuntimeError(f"Prefect devolvió estado HTTP {resp.status}.")
-
-    try:
-        tz = ZoneInfo(tz_name)
-    except Exception:
-        tz = ZoneInfo("UTC")
-    now_tz = datetime.now(tz)
-    return {
-        "status": "UPDATED",
-        "cron": cleaned,
-        "timezone": tz_name,
-        "schedule_label": describir_cron(cleaned),
-        "next_run_iso": next_dt.strftime("%Y-%m-%d %H:%M"),
-        "next_run_in": _format_delta_es((next_dt - now_tz).total_seconds(), future=True),
-    }
+ETIQUETAS_ETAPAS_DWH: dict[str, tuple[str, str]] = {
+    "dim_pais_departamento_ciudad": (
+        "Construir jerarquía Geográfica 3NF",
+        "Normalización País → Departamento → Ciudad con unicidad UK",
+    ),
+    "dim_ciudad": (
+        "Construir jerarquía Geográfica 3NF",
+        "Normalización País → Departamento → Ciudad con unicidad UK",
+    ),
+    "dim_kams": (
+        "Construir dimensión Ejecutivas KAM",
+        "Homologación de KAMs y separación de métricas precalculadas",
+    ),
+    "dim_empresas": (
+        "Construir maestro Empresas 3NF",
+        "Atributos corporativos, pilares estratégicos y FK ciudad",
+    ),
+    "membresias": (
+        "Construir Catálogo y Ciclos de Membresía",
+        "Separación de ciclos reales de afiliación vs. versiones CRM",
+    ),
+    "dim_personas": (
+        "Construir maestro Personas 3NF",
+        "Identidad limpia y resolución geográfica del contacto",
+    ),
+    "bridge_persona_empresa": (
+        "Construir Puente Persona-Empresa (N:N)",
+        "Trazabilidad de primera/última evidencia y vínculo actual",
+    ),
+    "dim_eventos": (
+        "Construir dimensión Eventos 3NF",
+        "Fechas inicio/fin, línea 2027, modalidad y ciudad sede",
+    ),
+    "fact_asistencias": (
+        "Cargar hechos de Asistencias",
+        "FK opcional a vínculo N:N, cargo al evento y Habeas Data",
+    ),
+    "fact_encuestas_satisfaccion": (
+        "Cargar hechos de Encuestas",
+        "4 calificaciones Likert 1–5 y entero nullable NPS 0–10",
+    ),
+    "fact_movimientos_crm": (
+        "Cargar hechos de Movimientos CRM",
+        "Renovaciones, cierres facturados y oportunidades en estado",
+    ),
+    "fact_asistencias_bi": (
+        "Construir Gold: Hechos Asistencias BI",
+        "Enriquecimiento dimensional para filtros cruzados",
+    ),
+    "fact_encuestas_bi": (
+        "Construir Gold: Hechos Encuestas BI + NLP",
+        "Separación Likert 1–5 vs. NPS 0–10 y taxonomía temática",
+    ),
+    "dim_empresa_360": (
+        "Construir Gold: Dimensión Empresa 360",
+        "Semáforo de riesgo, alertas preventivas y columnas ML",
+    ),
+    "dim_evento_kpis": (
+        "Construir Gold: KPIs Estratégicos de Eventos",
+        "Penetración en activos, liderazgo C-Level y % leads",
+    ),
+    "fact_evolucion_membresias_mes": (
+        "Construir Gold: Evolución Mensual Membresías",
+        "Serie aditiva de altas, vencimientos, renovaciones y retiros",
+    ),
+    "mart_segmentos_comunicaciones": (
+        "Construir Gold: 8 Segmentos Comunicaciones",
+        "Listas accionables con validación estricta Habeas Data",
+    ),
+}
 
 
 def _resolver_tabla_desde_fuente(fuente: str) -> tuple[str, str, str | None]:
     """Extrae capa, nombre lógico y tabla SQL desde el texto 'origen -> destino'."""
-    destino = fuente.split("->")[-1].strip()
-    destino_limpio = destino.split("(")[0].strip()
-    if "/" in destino_limpio:
-        capa, tabla_logica = destino_limpio.split("/", 1)
+    destino = fuente.split("->")[-1].strip().split("(")[0].strip()
+    if "/" in destino:
+        capa, tabla_logica = destino.split("/", 1)
     else:
-        capa, tabla_logica = "silver", destino_limpio
+        capa, tabla_logica = "silver", destino
     capa_up = capa.strip().upper()
-    tabla_logica = tabla_logica.strip()
-    sql_table = MAPA_NOMBRE_TABLA_SQL.get(tabla_logica)
-    return capa_up, tabla_logica, sql_table
+    tabla_limpia = tabla_logica.strip()
+    if tabla_limpia == "dim_pais_departamento_ciudad":
+        return capa_up, "dim_ciudad", "silver_dim_ciudad"
+    return capa_up, tabla_limpia, MAPA_NOMBRE_TABLA_SQL.get(tabla_limpia)
 
 
-def _formatear_titulo_etapa(capa: str, tabla_logica: str) -> tuple[str, str]:
-    """Genera título y subtítulo legibles para cada etapa de audit_cargas."""
-    etiquetas: dict[str, tuple[str, str]] = {
-        "dim_kams": ("Construir dimensión KAMs", "Homologación de ejecutivas y métricas de origen"),
-        "dim_empresas": ("Construir dimensión Empresas (+SCD2)", "Normalización geográfica, sectorial e historial SCD2"),
-        "dim_personas": ("Construir dimensión Personas", "Resolución de vínculo empresarial y cargos"),
-        "dim_eventos": ("Construir catálogo de Eventos", "Homologación de oferta 2027 y modalidades"),
-        "fact_asistencias": ("Cargar hechos de Asistencias", "Integridad referencial y conciliación con matriz general"),
-        "fact_encuestas_satisfaccion": ("Cargar hechos de Encuestas", "Satisfacción 1–5 y clasificación NPS adaptado"),
-        "fact_movimientos_crm": ("Cargar hechos de Movimientos CRM", "Afiliaciones, renovaciones y tratos en estado"),
-        "agg_participacion_empresa": ("Agregar Gold: Participación por Empresa", "Ventanas móviles 90d, trimestres y recencia"),
-        "agg_participacion_eventos": ("Agregar Gold: Participación por Evento", "Convocatoria por línea 2027, modalidad y leads"),
-        "agg_satisfaccion_encuestas": ("Agregar Gold: Satisfacción y NPS", "Agregación mensual por modalidad y temarios"),
-        "agg_retencion_empresa": ("Agregar Gold: Semáforo de Retención", "Puntaje heurístico de riesgo de no renovación"),
-        "agg_segmentos_comunicaciones": ("Generar Gold: 8 Segmentos Comunicaciones", "Listas accionables con control de autorización de datos"),
-    }
-    if tabla_logica in etiquetas:
-        return etiquetas[tabla_logica]
-    return f"Transformar {tabla_logica}", f"Flujo hacia capa {capa}"
+def _sesion_tiene_auditoria(session: Session | None) -> bool:
+    """Comprueba si PostgreSQL está activo y posee registros en audit_ejecuciones_etl."""
+    if session is None:
+        return False
+    try:
+        return session.query(AuditEjecucionEtl.id_ejecucion).limit(1).count() > 0
+    except Exception:
+        return False
 
 
-class EtlMonitorService:
-    """Construye la vista operativa de Prefect y auditoría Medallion desde PostgreSQL."""
+def _leer_parquet_seguro(carpeta: str, nombre: str) -> pd.DataFrame:
+    """Lee un archivo Parquet local devolviendo DataFrame vacío si no existe."""
+    ruta = ROOT_INPUT / carpeta / f"{nombre}.parquet"
+    return pd.read_parquet(ruta) if ruta.exists() else pd.DataFrame()
 
-    def __init__(self, session: Session) -> None:
-        """Inicializa el servicio con la sesión SQLAlchemy inyectada."""
-        self.session = session
 
-    def obtener_estado_pipeline(self, run_id: str | None = None) -> dict[str, Any]:
-        """Retorna el estado integral del flujo Prefect, etapas ETL y programación."""
-        orch = OrchestrationEnvs()
-        drive_cfg = GoogleDriveEnvs()
-        zoho_cfg = ZohoEnvs()
-        try:
-            tz = ZoneInfo(orch.schedule_timezone)
-        except Exception:
-            tz = ZoneInfo("UTC")
-
-        prefect_live = _consultar_prefect_live(orch.prefect_api_url)
-        effective_cron = prefect_live.get("active_cron") or orch.schedule_cron
-        effective_tz = prefect_live.get("active_timezone") or orch.schedule_timezone
-        try:
-            tz = ZoneInfo(effective_tz)
-        except Exception:
-            tz = ZoneInfo("UTC")
-        next_run_dt = calcular_proxima_ejecucion(effective_cron, effective_tz)
-        now_tz = datetime.now(tz)
-
-        ejecuciones = (
-            self.session.query(AuditEjecucionEtl)
+def _cargar_insumos_auditoria(session: Session | None) -> dict[str, Any]:
+    """Carga tablas de auditoría desde PostgreSQL o respaldo Parquet local."""
+    if _sesion_tiene_auditoria(session):
+        assert session is not None
+        ejec = (
+            session.query(AuditEjecucionEtl)
             .order_by(desc(AuditEjecucionEtl.fecha_inicio))
             .limit(15)
             .all()
         )
-        ejec_actual = None
-        if run_id:
-            ejec_actual = next((e for e in ejecuciones if e.id_ejecucion == run_id), None)
-        if ejec_actual is None and ejecuciones:
-            ejec_actual = ejecuciones[0]
-
-        watermarks = {
-            w.source_name: w
-            for w in self.session.query(AuditIngestionWatermark).all()
+        return {
+            "fuente": "postgresql",
+            "ejecuciones": [
+                {c.name: getattr(r, c.name) for c in AuditEjecucionEtl.__table__.columns}
+                for r in ejec
+            ],
+            "watermarks": {
+                w.source_name: {
+                    c.name: getattr(w, c.name)
+                    for c in AuditIngestionWatermark.__table__.columns
+                }
+                for w in session.query(AuditIngestionWatermark).all()
+            },
+            "hashes": [
+                {
+                    c.name: getattr(h, c.name)
+                    for c in AuditHashFuenteBronze.__table__.columns
+                }
+                for h in session.query(AuditHashFuenteBronze).all()
+            ],
+            "cargas": [
+                {c.name: getattr(cg, c.name) for c in AuditCarga.__table__.columns}
+                for cg in session.query(AuditCarga).all()
+            ],
+            "calidad": [
+                {
+                    c.name: getattr(q, c.name)
+                    for c in AuditCalidadDatos.__table__.columns
+                }
+                for q in session.query(AuditCalidadDatos).all()
+            ],
+            "reconcil": {
+                r.Tabla: {
+                    c.name: getattr(r, c.name)
+                    for c in AuditReconciliacionOrigenDestino.__table__.columns
+                }
+                for r in session.query(AuditReconciliacionOrigenDestino).all()
+            },
+            "rechazados_cnt": int(session.query(AuditRegistroRechazado).count()),
         }
-        hashes = self.session.query(AuditHashFuenteBronze).all()
-        calidad_rows = self.session.query(AuditCalidadDatos).all()
-        reconcil_map = {
-            r.Tabla: r
-            for r in self.session.query(AuditReconciliacionOrigenDestino).all()
+
+    df_ej = _leer_parquet_seguro("audit", "audit_ejecuciones_etl")
+    if not df_ej.empty:
+        df_ej = df_ej.sort_values("fecha_inicio", ascending=False).head(15)
+    df_rec = _leer_parquet_seguro("audit", "audit_reconciliacion_origen_destino")
+    return {
+        "fuente": "parquet",
+        "ejecuciones": df_ej.to_dict(orient="records"),
+        "watermarks": {},
+        "hashes": _leer_parquet_seguro("audit", "audit_hashes_fuentes_bronze").to_dict(
+            orient="records"
+        ),
+        "cargas": _leer_parquet_seguro("audit", "audit_cargas").to_dict(
+            orient="records"
+        ),
+        "calidad": _leer_parquet_seguro("audit", "audit_calidad_datos").to_dict(
+            orient="records"
+        ),
+        "reconcil": {
+            str(r["Tabla"]): r for r in df_rec.to_dict(orient="records")
+        },
+        "rechazados_cnt": int(
+            len(_leer_parquet_seguro("audit", "audit_registros_rechazados"))
+        ),
+    }
+
+
+def _construir_paso_extractor(
+    order: int,
+    step_id: str,
+    title: str,
+    subtitle: str,
+    *,
+    fuente: str,
+    source_name: str,
+    enabled: bool,
+    wm: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Construye el descriptor de estado para un extractor (Drive o Zoho)."""
+    st = wm["last_status"] if wm else ("ENABLED" if enabled else "SKIPPED")
+    rec = int(wm["records_extracted"] or 0) if wm else 0
+    return {
+        "order": order,
+        "step_id": step_id,
+        "title": title,
+        "subtitle": subtitle,
+        "layer": "EXTRACT",
+        "fuente": fuente,
+        "status": "COMPLETED" if st == "SUCCESS" else st,
+        "duration_seconds": None,
+        "registros_leidos": rec,
+        "registros_procesados": rec,
+        "registros_insertados": rec,
+        "registros_actualizados": 0,
+        "registros_rechazados": 0,
+        "fecha_inicio": wm.get("last_sync_at") if wm else None,
+        "fecha_finalizacion": wm.get("updated_at") if wm else None,
+        "sql_table": None,
+        "output_type": "watermark",
+        "output_key": source_name,
+        "details": (
+            wm["details"]
+            if wm and wm.get("details")
+            else ("Habilitado" if enabled else "Deshabilitado por entorno")
+        ),
+    }
+
+
+class EtlMonitorService:
+    """Construye la vista operativa de Prefect y auditoría del DWH Medallion."""
+
+    def __init__(self, session: Session | None = None) -> None:
+        """Inicializa el servicio con sesión SQLAlchemy opcional."""
+        self.session = session
+
+    def obtener_estado_pipeline(  # pylint: disable=too-many-locals
+        self, run_id: str | None = None
+    ) -> dict[str, Any]:
+        """Retorna el estado integral del flujo Prefect, etapas DWH y programación."""
+        orch = OrchestrationEnvs()
+        drive_cfg = GoogleDriveEnvs()
+        zoho_cfg = ZohoEnvs()
+        prefect_live = consultar_prefect_live(orch.prefect_api_url)
+        eff_cron = str(prefect_live.get("active_cron") or orch.schedule_cron)
+        eff_tz = str(prefect_live.get("active_timezone") or orch.schedule_timezone)
+        try:
+            tz = ZoneInfo(eff_tz)
+        except Exception:
+            tz = ZoneInfo("UTC")
+
+        next_run_dt = calcular_proxima_ejecucion(eff_cron, eff_tz)
+        now_tz = datetime.now(tz)
+        aud = _cargar_insumos_auditoria(self.session)
+        ejecuciones = aud["ejecuciones"]
+        ejec_act = (
+            next((e for e in ejecuciones if e["id_ejecucion"] == run_id), None)
+            if run_id
+            else (ejecuciones[0] if ejecuciones else None)
+        )
+        if ejec_act is None and ejecuciones:
+            ejec_act = ejecuciones[0]
+
+        steps = self._armar_etapas_dwh(aud, ejec_act, drive_cfg, zoho_cfg, tz)
+        act_steps = [s for s in steps if s["status"] != "SKIPPED"]
+        comp_steps = sum(1 for s in act_steps if s["status"] == "COMPLETED")
+        prog_pct = int(round(comp_steps / max(len(act_steps), 1) * 100))
+
+        last_s = parsear_ts(ejec_act["fecha_inicio"], tz) if ejec_act else None
+        last_e = parsear_ts(ejec_act["fecha_finalizacion"], tz) if ejec_act else None
+        p_run = prefect_live.get("latest_executed_run")
+        p_state = str(p_run.get("state_type", "")).upper() if p_run else ""
+        p_start = parsear_ts(p_run.get("start_time"), tz) if p_run else None
+        p_end = parsear_ts(p_run.get("end_time"), tz) if p_run else None
+        p_newer = bool(p_start and (last_e is None or p_start > last_e))
+        eff_last = (p_end or p_start) if p_newer and (p_end or p_start) else last_e
+
+        overall, prog_pct = self._resolver_estado_global(
+            p_state, p_newer, prefect_live.get("task_runs") or [], ejec_act, prog_pct
+        )
+        return {
+            "flow": {
+                "name": "eda-medallion-weekly-pipeline",
+                "deployment": orch.deployment_name,
+                "schedule_cron": eff_cron,
+                "schedule_timezone": eff_tz,
+                "schedule_label": describir_cron(eff_cron),
+                "prefect_connected": prefect_live["connected"],
+                "prefect_api_url": orch.prefect_api_url,
+                "prefect_live_runs": len(prefect_live["flow_runs"]),
+                "prefect_latest_run_name": p_run.get("name") if p_run else None,
+                "prefect_latest_state": p_state or None,
+                "prefect_latest_message": (
+                    str((p_run.get("state") or {}).get("message") or "")
+                    if p_run and isinstance(p_run.get("state"), dict)
+                    else None
+                ),
+                "prefect_skipped_no_changes": bool(p_newer and p_state == "COMPLETED"),
+                "fuente_auditoria": aud["fuente"],
+            },
+            "timing": {
+                "run_id": ejec_act["id_ejecucion"] if ejec_act else None,
+                "status": overall,
+                "last_run_start": (
+                    last_s.strftime("%Y-%m-%d %H:%M:%S") if last_s else None
+                ),
+                "last_run_end": (
+                    eff_last.strftime("%Y-%m-%d %H:%M:%S") if eff_last else None
+                ),
+                "last_medallion_end": (
+                    last_e.strftime("%Y-%m-%d %H:%M:%S") if last_e else None
+                ),
+                "last_run_ago": (
+                    formatear_delta_es((now_tz - eff_last).total_seconds())
+                    if eff_last
+                    else "Sin ejecuciones"
+                ),
+                "elapsed_seconds": (
+                    max(0, int((last_e - last_s).total_seconds()))
+                    if last_s and last_e
+                    else None
+                ),
+                "next_run_iso": (
+                    next_run_dt.strftime("%Y-%m-%d %H:%M") if next_run_dt else None
+                ),
+                "next_run_in": (
+                    formatear_delta_es(
+                        (next_run_dt - now_tz).total_seconds(), future=True
+                    )
+                    if next_run_dt
+                    else "No programada"
+                ),
+            },
+            "progress": {
+                "percent": prog_pct,
+                "completed_steps": comp_steps,
+                "total_steps": len(act_steps),
+                "total_all_steps": len(steps),
+                "archivos_procesados": (
+                    int(ejec_act["archivos_procesados"] or 0) if ejec_act else 0
+                ),
+                "registros_leidos": (
+                    int(ejec_act["registros_leidos"] or 0) if ejec_act else 0
+                ),
+                "registros_cargados": (
+                    int(ejec_act["registros_cargados"] or 0) if ejec_act else 0
+                ),
+                "registros_rechazados": (
+                    int(ejec_act["registros_rechazados"] or 0) if ejec_act else 0
+                ),
+                "errores": ejec_act["errores"] if ejec_act else "NINGUNO",
+            },
+            "steps": steps,
+            "history": [
+                {
+                    "id_ejecucion": e["id_ejecucion"],
+                    "fecha_inicio": e["fecha_inicio"],
+                    "fecha_finalizacion": e["fecha_finalizacion"],
+                    "archivos_procesados": int(e["archivos_procesados"] or 0),
+                    "registros_leidos": int(e["registros_leidos"] or 0),
+                    "registros_cargados": int(e["registros_cargados"] or 0),
+                    "estado_ejecucion": e["estado_ejecucion"],
+                }
+                for e in ejecuciones
+            ],
+            "quality_summary": {
+                "reglas_calidad": len(aud["calidad"]),
+                "registros_rechazados": aud["rechazados_cnt"],
+                "fuentes_bronze_verificadas": len(aud["hashes"]),
+            },
         }
 
-        steps: list[dict[str, Any]] = []
-        order = 1
-
-        # 01. Extractor Google Drive
-        wm_drive = watermarks.get(drive_cfg.source_name)
-        drive_status = (
-            wm_drive.last_status
-            if wm_drive
-            else ("ENABLED" if drive_cfg.enabled else "SKIPPED")
-        )
+    # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+    def _armar_etapas_dwh(
+        self,
+        aud: dict[str, Any],
+        ejec_act: dict[str, Any] | None,
+        drive_cfg: GoogleDriveEnvs,
+        zoho_cfg: ZohoEnvs,
+        tz: ZoneInfo,
+    ) -> list[dict[str, Any]]:
+        """Construye la lista secuencial Extract -> Bronze -> Silver 3NF -> Gold."""
+        wms = aud["watermarks"]
+        hashes = aud["hashes"]
+        steps = [
+            _construir_paso_extractor(
+                1,
+                "extract_google_drive",
+                "Extractor Google Drive",
+                "Descarga incremental de Excel/CSV y conversión de hojas",
+                fuente="google_drive -> input/raw_drive",
+                source_name=drive_cfg.source_name,
+                enabled=drive_cfg.enabled,
+                wm=wms.get(drive_cfg.source_name),
+            ),
+            _construir_paso_extractor(
+                2,
+                "extract_zoho_crm",
+                "Extractor Zoho CRM",
+                f"Sincronización OAuth2 ({', '.join(zoho_cfg.modules)})",
+                fuente="zoho_crm -> input/raw_zoho",
+                source_name=zoho_cfg.source_name,
+                enabled=zoho_cfg.enabled,
+                wm=wms.get(zoho_cfg.source_name),
+            ),
+        ]
+        b_filas = sum(int(h.get("filas_leidas") or 0) for h in hashes)
+        b_ok = all(bool(h.get("integridad_verificada")) for h in hashes) and bool(hashes)
         steps.append(
             {
-                "order": order,
-                "step_id": "extract_google_drive",
-                "title": "Extractor Google Drive",
-                "subtitle": "Descarga incremental de Excel/CSV y conversión de hojas",
-                "layer": "EXTRACT",
-                "fuente": "google_drive -> input/raw_drive",
-                "status": "COMPLETED" if drive_status == "SUCCESS" else drive_status,
-                "duration_seconds": None,
-                "registros_leidos": wm_drive.records_extracted if wm_drive else 0,
-                "registros_procesados": wm_drive.records_extracted if wm_drive else 0,
-                "registros_insertados": wm_drive.records_extracted if wm_drive else 0,
-                "registros_actualizados": 0,
-                "registros_rechazados": 0,
-                "fecha_inicio": wm_drive.last_sync_at if wm_drive else None,
-                "fecha_finalizacion": wm_drive.updated_at if wm_drive else None,
-                "sql_table": None,
-                "output_type": "watermark",
-                "output_key": drive_cfg.source_name,
-                "details": (
-                    wm_drive.details
-                    if wm_drive and wm_drive.details
-                    else ("Habilitado" if drive_cfg.enabled else "Deshabilitado por entorno")
-                ),
-            }
-        )
-        order += 1
-
-        # 02. Extractor Zoho CRM
-        wm_zoho = watermarks.get(zoho_cfg.source_name)
-        zoho_status = (
-            wm_zoho.last_status
-            if wm_zoho
-            else ("ENABLED" if zoho_cfg.enabled else "SKIPPED")
-        )
-        steps.append(
-            {
-                "order": order,
-                "step_id": "extract_zoho_crm",
-                "title": "Extractor Zoho CRM",
-                "subtitle": f"Sincronización OAuth2 ({', '.join(zoho_cfg.modules)})",
-                "layer": "EXTRACT",
-                "fuente": "zoho_crm -> input/raw_zoho",
-                "status": "COMPLETED" if zoho_status == "SUCCESS" else zoho_status,
-                "duration_seconds": None,
-                "registros_leidos": wm_zoho.records_extracted if wm_zoho else 0,
-                "registros_procesados": wm_zoho.records_extracted if wm_zoho else 0,
-                "registros_insertados": wm_zoho.records_extracted if wm_zoho else 0,
-                "registros_actualizados": 0,
-                "registros_rechazados": 0,
-                "fecha_inicio": wm_zoho.last_sync_at if wm_zoho else None,
-                "fecha_finalizacion": wm_zoho.updated_at if wm_zoho else None,
-                "sql_table": None,
-                "output_type": "watermark",
-                "output_key": zoho_cfg.source_name,
-                "details": (
-                    wm_zoho.details
-                    if wm_zoho and wm_zoho.details
-                    else ("Habilitado" if zoho_cfg.enabled else "Deshabilitado por entorno")
-                ),
-            }
-        )
-        order += 1
-
-        # 03. Ingesta Bronze (SHA-256)
-        bronze_filas = sum(int(h.filas_leidas or 0) for h in hashes)
-        bronze_ok = all(bool(h.integridad_verificada) for h in hashes) if hashes else False
-        steps.append(
-            {
-                "order": order,
+                "order": 3,
                 "step_id": "bronze_validation",
                 "title": "Ingesta y verificación Bronze (SHA-256)",
-                "subtitle": f"Validación inmutable de {len(hashes)} fuentes normalizadas",
+                "subtitle": f"Validación criptográfica de {len(hashes)} fuentes base",
                 "layer": "BRONZE",
                 "fuente": "input/normalizados -> input/bronze",
-                "status": "COMPLETED" if (hashes and bronze_ok) else "PENDING",
+                "status": "COMPLETED" if b_ok else "PENDING",
                 "duration_seconds": 1,
-                "registros_leidos": bronze_filas,
-                "registros_procesados": bronze_filas,
+                "registros_leidos": b_filas,
+                "registros_procesados": b_filas,
                 "registros_insertados": len(hashes),
                 "registros_actualizados": 0,
                 "registros_rechazados": 0,
-                "fecha_inicio": hashes[0].fecha_hora_ingesta if hashes else None,
-                "fecha_finalizacion": hashes[-1].fecha_hora_ingesta if hashes else None,
+                "fecha_inicio": hashes[0]["fecha_hora_ingesta"] if hashes else None,
+                "fecha_finalizacion": (
+                    hashes[-1]["fecha_hora_ingesta"] if hashes else None
+                ),
                 "sql_table": "audit_hashes_fuentes_bronze",
                 "output_type": "table",
                 "output_key": "audit_hashes_fuentes_bronze",
                 "details": f"{len(hashes)} archivos verificados con SHA-256",
             }
         )
-        order += 1
 
-        # 04..N Etapas de carga Silver y Gold desde audit_cargas
-        cargas: list[AuditCarga] = []
-        if ejec_actual is not None:
-            cargas = (
-                self.session.query(AuditCarga)
-                .filter(AuditCarga.id_ejecucion == ejec_actual.id_ejecucion)
-                .order_by(AuditCarga.fecha_inicio, AuditCarga.fuente)
-                .all()
-            )
-            if not cargas:
-                cargas = (
-                    self.session.query(AuditCarga)
-                    .order_by(AuditCarga.fecha_inicio, AuditCarga.fuente)
-                    .all()
-                )
-
-        # Orden canónico: Silver primero, luego Gold
+        cargas = [
+            c
+            for c in aud["cargas"]
+            if not ejec_act or c.get("id_ejecucion") == ejec_act["id_ejecucion"]
+        ] or list(aud["cargas"])
         cargas.sort(
             key=lambda c: (
-                0 if "-> silver/" in c.fuente else 1,
-                c.fecha_inicio or "",
-                c.fuente,
+                0 if "-> silver/" in str(c.get("fuente")) else 1,
+                str(c.get("fecha_inicio") or ""),
             )
         )
-
-        for carga in cargas:
-            capa, tabla_logica, sql_table = _resolver_tabla_desde_fuente(carga.fuente)
-            titulo, subtitulo = _formatear_titulo_etapa(capa, tabla_logica)
-            t_ini = _parse_ts(carga.fecha_inicio, tz)
-            t_fin = _parse_ts(carga.fecha_finalizacion, tz)
-            dur = (
-                max(0, int((t_fin - t_ini).total_seconds()))
-                if t_ini and t_fin
-                else None
+        order = 4
+        for cg in cargas:
+            capa, t_log, sql_t = _resolver_tabla_desde_fuente(str(cg["fuente"]))
+            tit, sub = ETIQUETAS_ETAPAS_DWH.get(
+                t_log, (f"Transformar {t_log}", f"Flujo hacia capa {capa}")
             )
-            st = (
-                "COMPLETED"
-                if (carga.estado_ejecucion or "").upper() == "EXITOSO"
-                else (carga.estado_ejecucion or "PENDING").upper()
-            )
-            rec = reconcil_map.get(tabla_logica)
-            cal_cnt = sum(
-                1 for q in calidad_rows if (q.tabla_analizada or "") == tabla_logica
-            )
+            t_ini = parsear_ts(cg.get("fecha_inicio"), tz)
+            t_fin = parsear_ts(cg.get("fecha_finalizacion"), tz)
+            rec = aud["reconcil"].get(t_log)
             steps.append(
                 {
                     "order": order,
-                    "step_id": f"stage_{tabla_logica}",
-                    "title": titulo,
-                    "subtitle": subtitulo,
+                    "step_id": f"stage_{t_log}",
+                    "title": tit,
+                    "subtitle": sub,
                     "layer": capa,
-                    "fuente": carga.fuente,
-                    "status": st,
-                    "duration_seconds": dur,
-                    "registros_leidos": int(carga.registros_leidos or 0),
-                    "registros_procesados": int(carga.registros_procesados or 0),
-                    "registros_insertados": int(carga.registros_insertados or 0),
-                    "registros_actualizados": int(carga.registros_actualizados or 0),
-                    "registros_rechazados": int(carga.registros_rechazados or 0),
-                    "fecha_inicio": carga.fecha_inicio,
-                    "fecha_finalizacion": carga.fecha_finalizacion,
-                    "sql_table": sql_table,
-                    "output_type": "table" if sql_table else "audit",
-                    "output_key": sql_table or tabla_logica,
-                    "quality_rules_count": cal_cnt,
+                    "fuente": cg["fuente"],
+                    "status": (
+                        "COMPLETED"
+                        if str(cg.get("estado_ejecucion", "")).upper() == "EXITOSO"
+                        else str(cg.get("estado_ejecucion") or "PENDING").upper()
+                    ),
+                    "duration_seconds": (
+                        max(0, int((t_fin - t_ini).total_seconds()))
+                        if t_ini and t_fin
+                        else None
+                    ),
+                    "registros_leidos": int(cg.get("registros_leidos") or 0),
+                    "registros_procesados": int(cg.get("registros_procesados") or 0),
+                    "registros_insertados": int(cg.get("registros_insertados") or 0),
+                    "registros_actualizados": int(cg.get("registros_actualizados") or 0),
+                    "registros_rechazados": int(cg.get("registros_rechazados") or 0),
+                    "fecha_inicio": cg.get("fecha_inicio"),
+                    "fecha_finalizacion": cg.get("fecha_finalizacion"),
+                    "sql_table": sql_t,
+                    "output_type": "table" if sql_t else "audit",
+                    "output_key": sql_t or t_log,
                     "reconciliation_diff": (
-                        int(rec.Diferencia_Filas) if rec and rec.Diferencia_Filas is not None else None
+                        int(rec["Diferencia_Filas"])
+                        if rec and pd.notna(rec.get("Diferencia_Filas"))
+                        else None
                     ),
                 }
             )
             order += 1
+        return steps
 
-        # Calcular métricas globales de progreso y tiempos
-        active_steps = [s for s in steps if s["status"] != "SKIPPED"]
-        completed_steps = sum(1 for s in active_steps if s["status"] == "COMPLETED")
-        total_active = max(len(active_steps), 1)
-        progress_pct = int(round((completed_steps / total_active) * 100))
-
-        last_start_dt = _parse_ts(ejec_actual.fecha_inicio, tz) if ejec_actual else None
-        last_end_dt = _parse_ts(ejec_actual.fecha_finalizacion, tz) if ejec_actual else None
-        elapsed_sec = (
-            max(0, int((last_end_dt - last_start_dt).total_seconds()))
-            if last_start_dt and last_end_dt
-            else None
+    @staticmethod
+    def _resolver_estado_global(
+        p_state: str,
+        p_newer: bool,
+        p_tasks: list[dict[str, Any]],
+        ejec_act: dict[str, Any] | None,
+        prog_pct: int,
+    ) -> tuple[str, int]:
+        """Determina el estado global combinando Prefect live y auditoría DWH."""
+        done_t = sum(
+            1 for t in p_tasks if str(t.get("state_type", "")).upper() == "COMPLETED"
         )
-        ago_label = (
-            _format_delta_es((now_tz - last_end_dt).total_seconds(), future=False)
-            if last_end_dt
-            else "Sin ejecuciones"
-        )
-        next_in_label = (
-            _format_delta_es((next_run_dt - now_tz).total_seconds(), future=True)
-            if next_run_dt
-            else "No programada"
-        )
-
-        # Verificar el estado más reciente ejecutado en Prefect Server (ignorando futuros SCHEDULED)
-        latest_prefect_run = prefect_live.get("latest_executed_run")
-        prefect_state_type = (
-            str(latest_prefect_run.get("state_type", "")).upper()
-            if latest_prefect_run
-            else ""
-        )
-        prefect_state_msg = (
-            str(latest_prefect_run.get("state", {}).get("message") or "")
-            if latest_prefect_run and isinstance(latest_prefect_run.get("state"), dict)
-            else ""
-        )
-        prefect_start_dt = (
-            _parse_ts(latest_prefect_run.get("start_time"), tz)
-            if latest_prefect_run
-            else None
-        )
-        prefect_end_dt = (
-            _parse_ts(latest_prefect_run.get("end_time"), tz)
-            if latest_prefect_run
-            else None
-        )
-        prefect_is_newer = bool(
-            prefect_start_dt and (last_end_dt is None or prefect_start_dt > last_end_dt)
-        )
-
-        # Si Prefect ejecutó una corrida más reciente que la última carga Medallion,
-        # reflejar su timestamp en "Última ejecución" (por ej. revisión sin cambios o fallo).
-        effective_last_dt = (
-            (prefect_end_dt or prefect_start_dt)
-            if prefect_is_newer and (prefect_end_dt or prefect_start_dt)
-            else last_end_dt
-        )
-        ago_label = (
-            _format_delta_es((now_tz - effective_last_dt).total_seconds(), future=False)
-            if effective_last_dt
-            else "Sin ejecuciones"
-        )
-        effective_last_ts = (
-            effective_last_dt.strftime("%Y-%m-%d %H:%M:%S")
-            if effective_last_dt
-            else None
-        )
-
-        prefect_tasks = prefect_live.get("task_runs") or []
-        if prefect_state_type == "RUNNING":
-            overall_status = "RUNNING"
-            done_t = sum(
-                1
-                for t in prefect_tasks
-                if str(t.get("state_type", "")).upper() == "COMPLETED"
-            )
-            progress_pct = min(95, max(15, int(round((done_t / 4) * 100))))
-        elif prefect_is_newer and prefect_state_type == "FAILED":
-            overall_status = "FAILED"
-            done_t = sum(
-                1
-                for t in prefect_tasks
-                if str(t.get("state_type", "")).upper() == "COMPLETED"
-            )
-            progress_pct = min(90, max(10, int(round((done_t / 4) * 100))))
-        elif ejec_actual and ejec_actual.estado_ejecucion == "EXITOSO":
-            overall_status = "COMPLETED"
-        else:
-            overall_status = ejec_actual.estado_ejecucion if ejec_actual else "PENDING"
-
-        dup_count = self.session.query(AuditRegistroDuplicado).count()
-        rej_count = self.session.query(AuditRegistroRechazado).count()
-
-        return {
-            "flow": {
-                "name": "eda-medallion-weekly-pipeline",
-                "deployment": orch.deployment_name,
-                "schedule_cron": effective_cron,
-                "schedule_timezone": effective_tz,
-                "schedule_label": describir_cron(effective_cron),
-                "prefect_connected": prefect_live["connected"],
-                "prefect_api_url": orch.prefect_api_url,
-                "prefect_live_runs": len(prefect_live["flow_runs"]),
-                "prefect_latest_run_name": (
-                    latest_prefect_run.get("name") if latest_prefect_run else None
-                ),
-                "prefect_latest_state": prefect_state_type or None,
-                "prefect_latest_message": prefect_state_msg or None,
-                "prefect_skipped_no_changes": bool(
-                    prefect_is_newer and prefect_state_type == "COMPLETED"
-                ),
-            },
-            "timing": {
-                "run_id": ejec_actual.id_ejecucion if ejec_actual else None,
-                "status": overall_status,
-                "last_run_start": (
-                    last_start_dt.strftime("%Y-%m-%d %H:%M:%S")
-                    if last_start_dt
-                    else None
-                ),
-                "last_run_end": effective_last_ts,
-                "last_medallion_end": (
-                    last_end_dt.strftime("%Y-%m-%d %H:%M:%S") if last_end_dt else None
-                ),
-                "last_run_ago": ago_label,
-                "elapsed_seconds": elapsed_sec,
-                "next_run_iso": (
-                    next_run_dt.strftime("%Y-%m-%d %H:%M") if next_run_dt else None
-                ),
-                "next_run_in": next_in_label,
-            },
-            "progress": {
-                "percent": progress_pct,
-                "completed_steps": completed_steps,
-                "total_steps": len(active_steps),
-                "total_all_steps": len(steps),
-                "archivos_procesados": (
-                    int(ejec_actual.archivos_procesados or 0) if ejec_actual else 0
-                ),
-                "registros_leidos": (
-                    int(ejec_actual.registros_leidos or 0) if ejec_actual else 0
-                ),
-                "registros_cargados": (
-                    int(ejec_actual.registros_cargados or 0) if ejec_actual else 0
-                ),
-                "registros_rechazados": (
-                    int(ejec_actual.registros_rechazados or 0) if ejec_actual else 0
-                ),
-                "duplicados_identificados": (
-                    int(ejec_actual.duplicados_identificados or 0)
-                    if ejec_actual
-                    else dup_count
-                ),
-                "errores": ejec_actual.errores if ejec_actual else "NINGUNO",
-            },
-            "steps": steps,
-            "history": [
-                {
-                    "id_ejecucion": e.id_ejecucion,
-                    "fecha_inicio": e.fecha_inicio,
-                    "fecha_finalizacion": e.fecha_finalizacion,
-                    "archivos_procesados": int(e.archivos_procesados or 0),
-                    "registros_leidos": int(e.registros_leidos or 0),
-                    "registros_cargados": int(e.registros_cargados or 0),
-                    "estado_ejecucion": e.estado_ejecucion,
-                }
-                for e in ejecuciones
-            ],
-            "quality_summary": {
-                "reglas_calidad": len(calidad_rows),
-                "duplicados_auditados": int(dup_count),
-                "registros_rechazados": int(rej_count),
-                "fuentes_bronze_verificadas": len(hashes),
-            },
-        }
+        if p_state == "RUNNING":
+            return "RUNNING", min(95, max(15, int(round((done_t / 4) * 100))))
+        if p_newer and p_state == "FAILED":
+            return "FAILED", min(90, max(10, int(round((done_t / 4) * 100))))
+        if ejec_act and ejec_act.get("estado_ejecucion") == "EXITOSO":
+            return "COMPLETED", prog_pct
+        return (
+            str(ejec_act.get("estado_ejecucion")) if ejec_act else "PENDING"
+        ), prog_pct
 
     def obtener_salida_etapa(
         self,
@@ -788,14 +544,11 @@ class EtlMonitorService:
         output_type: str = "table",
         limit: int = 20,
     ) -> dict[str, Any]:
-        """Consulta una muestra real de la salida ETL de una etapa específica."""
+        """Consulta una muestra real de la salida de una etapa (SQL o Parquet)."""
         if output_type == "watermark":
-            wm = (
-                self.session.query(AuditIngestionWatermark)
-                .filter(AuditIngestionWatermark.source_name == output_key)
-                .first()
-            )
-            if wm is None:
+            aud = _cargar_insumos_auditoria(self.session)
+            wm = aud["watermarks"].get(output_key)
+            if not wm:
                 return {
                     "output_key": output_key,
                     "output_type": "watermark",
@@ -804,23 +557,14 @@ class EtlMonitorService:
                     "rows": [],
                     "quality_rules": [],
                     "reconciliation": None,
-                    "note": "Sin registro previo en audit_ingestion_watermarks.",
+                    "note": "Sin ejecuciones incrementales previas registradas.",
                 }
-            row_dict = {
-                "source_name": wm.source_name,
-                "last_status": wm.last_status,
-                "last_sync_at": wm.last_sync_at,
-                "records_extracted": wm.records_extracted,
-                "last_cursor": wm.last_cursor,
-                "details": wm.details,
-                "updated_at": wm.updated_at,
-            }
             return {
                 "output_key": output_key,
                 "output_type": "watermark",
                 "total_rows": 1,
-                "columns": list(row_dict.keys()),
-                "rows": [row_dict],
+                "columns": list(wm.keys()),
+                "rows": [wm],
                 "quality_rules": [],
                 "reconciliation": None,
             }
@@ -828,37 +572,27 @@ class EtlMonitorService:
         if output_key not in ALLOWED_OUTPUT_TABLES:
             raise ValueError(f"Tabla de salida ETL no permitida: {output_key}")
 
-        # Consulta segura usando nombre de tabla validado contra ALLOWED_OUTPUT_TABLES
-        total_rows = int(
-            self.session.execute(
-                text(f"SELECT COUNT(*) FROM {output_key}")
-            ).scalar()
-            or 0
-        )
-        res = self.session.execute(
-            text(f"SELECT * FROM {output_key} LIMIT :lim"), {"lim": limit}
-        )
-        columns = list(res.keys())
-        rows = [
-            {col: (None if val is None else str(val)) for col, val in zip(columns, r)}
-            for r in res.fetchall()
-        ]
-
-        # Buscar reglas de calidad y reconciliación asociadas a la tabla lógica
         tabla_logica = next(
             (k for k, v in MAPA_NOMBRE_TABLA_SQL.items() if v == output_key),
             output_key,
         )
-        calidad = (
-            self.session.query(AuditCalidadDatos)
-            .filter(AuditCalidadDatos.tabla_analizada == tabla_logica)
-            .all()
+        total_rows, columns, rows = self._leer_muestra_tabla(
+            output_key, tabla_logica, limit
         )
-        rec = (
-            self.session.query(AuditReconciliacionOrigenDestino)
-            .filter(AuditReconciliacionOrigenDestino.Tabla == tabla_logica)
-            .first()
-        )
+        aud = _cargar_insumos_auditoria(self.session)
+        calidad = [
+            {
+                "id_incidencia": q["id_incidencia"],
+                "campo": q["campo_afectado"],
+                "tipo": q["tipo_inconsistencia"],
+                "afectados": q["registros_afectados"],
+                "estado": q["estado_resolucion"],
+                "detalle": q["valor_corregido"],
+            }
+            for q in aud["calidad"]
+            if q.get("tabla_analizada") == tabla_logica
+        ]
+        rec = aud["reconcil"].get(tabla_logica)
         return {
             "output_key": output_key,
             "tabla_logica": tabla_logica,
@@ -866,30 +600,56 @@ class EtlMonitorService:
             "total_rows": total_rows,
             "columns": columns[:10],
             "total_columns": len(columns),
-            "rows": [
-                {c: row[c] for c in columns[:10]}
-                for row in rows
-            ],
-            "quality_rules": [
-                {
-                    "id_incidencia": q.id_incidencia,
-                    "campo": q.campo_afectado,
-                    "tipo": q.tipo_inconsistencia,
-                    "afectados": q.registros_afectados,
-                    "estado": q.estado_resolucion,
-                    "detalle": q.valor_corregido,
-                }
-                for q in calidad
-            ],
+            "rows": [{c: row[c] for c in columns[:10]} for row in rows],
+            "quality_rules": calidad,
             "reconciliation": (
                 {
-                    "filas_bronze": rec.Filas_Bronze,
-                    "filas_silver": rec.Filas_Silver,
-                    "filas_rechazadas": rec.Filas_Rechazadas,
-                    "diferencia": rec.Diferencia_Filas,
-                    "explicacion": rec.Explicacion_Reconciliacion,
+                    "filas_bronze": int(rec["Filas_Bronze"]),
+                    "filas_silver": int(rec["Filas_Silver"]),
+                    "filas_rechazadas": int(rec["Filas_Rechazadas"]),
+                    "diferencia": int(rec["Diferencia_Filas"]),
+                    "explicacion": rec["Explicacion_Reconciliacion"],
                 }
                 if rec
                 else None
             ),
         }
+
+    def _leer_muestra_tabla(
+        self, sql_table: str, tabla_logica: str, limit: int
+    ) -> tuple[int, list[str], list[dict[str, Any]]]:
+        """Obtiene conteo total y muestra desde PostgreSQL o Parquet local."""
+        if _sesion_tiene_auditoria(self.session):
+            assert self.session is not None
+            total = int(
+                self.session.execute(text(f"SELECT COUNT(*) FROM {sql_table}")).scalar()
+                or 0
+            )
+            res = self.session.execute(
+                text(f"SELECT * FROM {sql_table} LIMIT :lim"), {"lim": limit}
+            )
+            cols = list(res.keys())
+            filas = [
+                {col: (None if val is None else str(val)) for col, val in zip(cols, r)}
+                for r in res.fetchall()
+            ]
+            return total, cols, filas
+
+        carpeta = (
+            "silver"
+            if sql_table.startswith("silver_")
+            else ("gold" if sql_table.startswith("gold_") else "audit")
+        )
+        df = _leer_parquet_seguro(carpeta, tabla_logica)
+        if df.empty:
+            return 0, [], []
+        cols = list(df.columns)
+        sub = df.head(limit)
+        filas = [
+            {c: (None if pd.isna(r[c]) else str(r[c])) for c in cols}
+            for _, r in sub.iterrows()
+        ]
+        return int(len(df)), cols, filas
+
+
+__all__ = ["EtlMonitorService", "actualizar_cron_prefect", "disparar_corrida_prefect"]
