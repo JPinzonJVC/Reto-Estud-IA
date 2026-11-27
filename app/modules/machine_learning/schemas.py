@@ -54,3 +54,54 @@ class EstadoEspacioMLResponse(BaseModel):
     """Instrucciones de conexión automática para la rama ML."""
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ResultadoMlResponse(BaseModel):
+    """Resultado descriptivo/heurístico de una empresa en Gold ML."""
+
+    id_empresa: str
+    id_ejecucion: str
+    caso_uso: str
+    version: str
+    fecha_corte: str
+    estado: str
+    metodo: str
+    score: float | None = None
+    segmento_o_linea: str | None = None
+    soporte: int | None = None
+    justificacion: dict[str, Any]
+    metricas: dict[str, Any]
+
+
+class PaginaResultadosMlResponse(BaseModel):
+    """Página filtrada del corte vigente para un caso ML."""
+
+    caso_uso: str
+    fecha_corte: str | None
+    version: str | None
+    id_ejecucion: str | None
+    total: int
+    limit: int
+    offset: int
+    items: list[ResultadoMlResponse]
+
+
+class ResumenCasoMlResponse(BaseModel):
+    """Cobertura del último corte y estado real de un caso ML."""
+
+    caso_uso: str
+    fecha_corte: str | None
+    version: str | None
+    estado: str
+    empresas_procesadas: int
+    resultados_disponibles: int
+    tipo_resultado: str
+
+
+class ResumenMlResponse(BaseModel):
+    """Resumen del corte ML vigente y disponibilidad de artefactos aprobados."""
+
+    fecha_corte: str | None
+    resultados_totales: int
+    modelos_aprobados_disponibles: int
+    casos_uso: list[ResumenCasoMlResponse]

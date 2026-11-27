@@ -4,19 +4,135 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.modules.dashboard.data_store import SnapshotDWH, cargar_snapshot_dwh
+from app.modules.eda.ml.persistence import list_result_page, list_results
+from app.modules.eda.ml.common.registry import (
+    ModelManifest,
+    artifacts_root_from_environment,
+)
 from app.modules.machine_learning.schemas import (
     EstadoEspacioMLResponse,
+    PaginaResultadosMlResponse,
+    ResumenMlResponse,
     SlotModeloML,
 )
 
 ml_router = APIRouter(prefix="/ml", tags=["Machine Learning"])
 
 MODELS_DIR = Path(__file__).resolve().parent / "models"
+ML_CASES = (
+    "fidelidad_rfm_s",
+    "recomendacion_linea",
+    "churn_heuristico",
+    "lead_prioridad",
+)
+
+
+@ml_router.get("/resumen", response_model=ResumenMlResponse)
+def get_ml_overview(db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Resume cobertura, corte, estado y artefactos aprobados disponibles."""
+    result_types = {
+        "fidelidad_rfm_s": "No supervisado / exploratorio",
+        "recomendacion_linea": "Afinidad histórica",
+        "churn_heuristico": "Heurístico",
+        "lead_prioridad": "Priorización descriptiva",
+    }
+    cases: list[dict[str, Any]] = []
+    for case in ML_CASES:
+        page = (
+            list_result_page(db, case, limit=1)
+            if _result_table_exists(db)
+            else {"fecha_corte": None, "version": None, "total": 0, "items": []}
+        )
+        item = page["items"][0] if page["items"] else None
+        cases.append(
+            {
+                "caso_uso": case,
+                "fecha_corte": page["fecha_corte"],
+                "version": page["version"],
+                "estado": item["estado"] if item else "SIN_RESULTADOS",
+                "empresas_procesadas": page["total"],
+                "resultados_disponibles": page["total"],
+                "tipo_resultado": result_types[case],
+            }
+        )
+    return {
+        "fecha_corte": max(
+            (case["fecha_corte"] for case in cases if case["fecha_corte"]),
+            default=None,
+        ),
+        "resultados_totales": sum(
+            case["resultados_disponibles"] for case in cases
+        ),
+        "modelos_aprobados_disponibles": _approved_model_count(),
+        "casos_uso": cases,
+    }
+
+
+def _result_table_exists(db: Session) -> bool:
+    """Comprueba si la migración ML está instalada sin crear el modelo en metadata."""
+    return inspect(db.get_bind()).has_table("gold_ml_resultados_empresa")
+
+
+def _approved_model_count() -> int:
+    """Cuenta manifiestos aprobados en el registro externo configurado."""
+    try:
+        artifacts_root = artifacts_root_from_environment()
+    except RuntimeError:
+        return 0
+    approved = 0
+    for manifest_path in artifacts_root.glob("*/*/manifest.json"):
+        try:
+            manifest = ModelManifest.model_validate_json(
+                manifest_path.read_text(encoding="utf-8")
+            )
+        except (OSError, ValueError):
+            continue
+        approved += int(manifest.approved)
+    return approved
+
+
+# FastAPI representa los filtros como argumentos tipados de query.
+# pylint: disable=too-many-positional-arguments
+@ml_router.get(
+    "/resultados/{caso_uso}", response_model=PaginaResultadosMlResponse
+)
+def get_ml_results(
+    caso_uso: str,
+    id_empresa: str | None = None,
+    buscar_empresa: str | None = Query(default=None, max_length=64),
+    segmento: str | None = Query(default=None, max_length=128),
+    estado: str | None = Query(default=None, max_length=32),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Consulta resultados Gold descriptivos del corte más reciente."""
+    cases = {
+        "fidelidad_rfm_s", "recomendacion_linea", "churn_heuristico",
+        "lead_prioridad",
+    }
+    if caso_uso not in cases:
+        raise HTTPException(status_code=404, detail="Caso de uso ML desconocido.")
+    if not _result_table_exists(db):
+        raise HTTPException(
+            status_code=503,
+            detail="Resultados ML no disponibles; aplica primero la migración Alembic.",
+        )
+    return list_result_page(
+        db,
+        caso_uso,
+        limit=limit,
+        offset=offset,
+        company_search=buscar_empresa or id_empresa,
+        segment=segmento,
+        status=estado,
+    )
 
 
 def _contar_no_nulos(df: pd.DataFrame, col: str) -> int:
@@ -117,6 +233,19 @@ def get_ml_fidelidad(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Espacio reservado para el Modelo de Fidelidad sobre afiliados activos."""
+    results = (
+        list_results(db, "fidelidad_rfm_s", limit=limit)
+        if _result_table_exists(db)
+        else []
+    )
+    if results:
+        return {
+            "estado": "EXPERIMENTAL",
+            "nota": "Segmentos descriptivos; no representan probabilidad de retención.",
+            "total_resultados": len(results),
+            "distribucion_arquetipos": {},
+            "items": results,
+        }
     snap = cargar_snapshot_dwh(db)
     emp = snap.dim_empresa_360
     act = emp[emp["es_membresia_activa"].eq(True)].copy() if not emp.empty else emp
@@ -168,6 +297,19 @@ def get_ml_publico_eventos(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Espacio reservado para ML de Público Interesado y Potencial Asistencia."""
+    if _result_table_exists(db):
+        recommendations = list_results(db, "recomendacion_linea", limit=limit)
+        priorities = list_results(db, "lead_prioridad", limit=limit)
+    else:
+        recommendations = []
+        priorities = []
+    if recommendations or priorities:
+        return {
+            "estado": "AFINIDAD_HISTORICA_DESCRIPTIVA",
+            "nota": "No representa probabilidad de asistencia ni de conversión.",
+            "recomendaciones": recommendations,
+            "priorizacion_prospectos": priorities,
+        }
     snap = cargar_snapshot_dwh(db)
     emp = snap.dim_empresa_360
     activo_ml = _contar_no_nulos(emp, "prob_asistencia_prox_evento_ml") > 0
