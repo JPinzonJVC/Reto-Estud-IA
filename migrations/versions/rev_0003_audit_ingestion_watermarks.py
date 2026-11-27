@@ -22,7 +22,7 @@ def upgrade() -> None:
         None.
 
     Raises:
-        sqlalchemy.exc.SQLAlchemyError: Si falla la creación de la tabla en la base de datos.
+        sqlalchemy.exc.SQLAlchemyError: Si falla la creación de la tabla en DB.
 
     """
     bind = op.get_bind()
@@ -39,7 +39,7 @@ def downgrade() -> None:
         None.
 
     Raises:
-        sqlalchemy.exc.SQLAlchemyError: Si falla la eliminación de la tabla en la base de datos.
+        sqlalchemy.exc.SQLAlchemyError: Si falla la eliminación de la tabla en DB.
 
     """
     bind = op.get_bind()

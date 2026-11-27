@@ -183,9 +183,7 @@ def _procesar_empresas_y_membresias(
     df_emp = pd.DataFrame(
         {
             "id_empresa": df_orig["id_empresa"].apply(limpiar_texto_y_mojibake),
-            "id_registro_crm": df_orig["id_registro_crm"].apply(
-                limpiar_texto_y_mojibake
-            ),
+            "id_registro_crm": df_orig["id_registro_crm"].apply(limpiar_texto_y_mojibake),
             "kam_id": df_orig["kam_id"].apply(lambda v: homologar_kam_id(v, cfg)),
             "id_ciudad_empresa": pd.Series(ciudades_fk, dtype="Int64"),
             "es_empresa_activa": df_orig["es_empresa_activa"].eq(True),
@@ -194,9 +192,7 @@ def _procesar_empresas_y_membresias(
                 limpiar_texto_y_mojibake
             ),
             "tamano_empresa": df_orig["tamano_empresa"].apply(limpiar_texto_y_mojibake),
-            "rango_empleados": df_orig["rango_empleados"].apply(
-                limpiar_texto_y_mojibake
-            ),
+            "rango_empleados": df_orig["rango_empleados"].apply(limpiar_texto_y_mojibake),
             "porcentaje_mujeres_num": pd.to_numeric(
                 df_orig["porcentaje_mujeres_num"], errors="coerce"
             ),
@@ -289,9 +285,7 @@ def _procesar_dim_eventos(
         {
             "id_evento": pd.to_numeric(df_ev_orig["id_evento"], errors="coerce"),
             "id_ciudad_evento": pd.Series(ciudades_ev, dtype="Int64"),
-            "nombre_evento": df_ev_orig["nombre_evento"].apply(
-                limpiar_texto_y_mojibake
-            ),
+            "nombre_evento": df_ev_orig["nombre_evento"].apply(limpiar_texto_y_mojibake),
             "fecha_inicio_evento": f_ini_final,
             "fecha_fin_evento": f_fin_final,
             "linea_oferta_2027": df_ev_orig["linea_oferta_2027"].apply(
@@ -467,9 +461,7 @@ def _procesar_fact_asistencias(
                 [geo.resolver_id_ciudad(v) for v in df_orig["ciudad_evento"]],
                 dtype="Int64",
             ),
-            "nivel_cargo_evento": df_orig["nivel_cargo"].apply(
-                limpiar_texto_y_mojibake
-            ),
+            "nivel_cargo_evento": df_orig["nivel_cargo"].apply(limpiar_texto_y_mojibake),
             "tipo_asistencia": tipo_asist,
             "cantidad_inscritos": _a_int64_nullable(df_orig["cantidad_inscritos"]),
             "tiene_costo": df_orig["tiene_costo"].apply(normalizar_booleano),
@@ -626,9 +618,7 @@ def _procesar_fact_movimientos_crm(
 
     df_mov = pd.DataFrame(
         {
-            "id_movimiento": [
-                f"MOV-{idx:04d}" for idx in range(1, len(df_mov_orig) + 1)
-            ],
+            "id_movimiento": [f"MOV-{idx:04d}" for idx in range(1, len(df_mov_orig) + 1)],
             "id_empresa": df_mov_orig["id_empresa"].apply(limpiar_texto_y_mojibake),
             "id_membresia": mem_fks,
             "kam_id": df_mov_orig["kam_id"].apply(lambda v: homologar_kam_id(v, cfg)),

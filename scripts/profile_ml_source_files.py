@@ -131,9 +131,7 @@ def _profile_table(root: Path, name: str, config: dict[str, Any]) -> dict[str, A
         "rows": int(len(frame)),
         "columns": {column: str(frame[column].dtype) for column in selected},
         "nulls": {column: int(frame[column].isna().sum()) for column in selected},
-        "duplicate_keys": (
-            int(frame.duplicated(key).sum()) if key else None
-        ),
+        "duplicate_keys": (int(frame.duplicated(key).sum()) if key else None),
         "categories": category_counts,
     }
 

@@ -23,7 +23,7 @@ class ZohoCRMExtractor:
         """Inicializa el extractor con la configuración de Zoho CRM.
 
         Args:
-            config: Configuración opcional; si es None, se carga desde variables de entorno.
+            config: Configuración opcional; si es None, se carga desde entorno.
 
         Returns:
             None.
@@ -152,8 +152,8 @@ class ZohoCRMExtractor:
             and self.config.refresh_token
         ):
             raise ValueError(
-                "ZOHO_CLIENT_ID, ZOHO_CLIENT_SECRET y ZOHO_REFRESH_TOKEN son obligatorios "
-                "cuando ZOHO_ENABLED=true."
+                "ZOHO_CLIENT_ID, ZOHO_CLIENT_SECRET y ZOHO_REFRESH_TOKEN "
+                "son obligatorios cuando ZOHO_ENABLED=true."
             )
 
         sync_started_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")

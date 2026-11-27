@@ -79,9 +79,11 @@ def calcular_proxima_ejecucion(cron_expr: str, tz_name: str) -> datetime | None:
         day_matches = (
             cursor.day in doms
             if dow_wildcard
-            else cursor.weekday() in dows
-            if dom_wildcard
-            else cursor.day in doms or cursor.weekday() in dows
+            else (
+                cursor.weekday() in dows
+                if dom_wildcard
+                else cursor.day in doms or cursor.weekday() in dows
+            )
         )
         if cursor.month in months and day_matches and cursor.hour in hours:
             for minute in sorted(minutes):
@@ -221,7 +223,7 @@ def consultar_prefect_live(
                 "active_cron": active_cron,
                 "active_timezone": active_tz,
             }
-        except Exception:
+        except Exception:  # nosec B112
             continue
 
     return {
@@ -238,7 +240,8 @@ def consultar_prefect_live(
 
 
 def _leer_deployment_activo(
-    base_url: str, deployment_name: str | None = None,
+    base_url: str,
+    deployment_name: str | None = None,
 ) -> tuple[str | None, str | None, str | None, str | None]:
     """Obtiene id de deployment, schedule, cron y zona horaria desde Prefect."""
     try:
@@ -254,7 +257,7 @@ def _leer_deployment_activo(
                 sch = scheds[0].get("schedule") or {}
                 return dep_id, scheds[0].get("id"), sch.get("cron"), sch.get("timezone")
             return dep_id, None, None, None
-    except Exception:
+    except Exception:  # nosec B110
         pass
     return None, None, None, None
 

@@ -34,9 +34,7 @@ def _limpiar_val(val: Any) -> Any:
     return None if pd.isna(val) else val
 
 
-def _filtrar_empresas_360(
-    df: pd.DataFrame, filtros: dict[str, Any]
-) -> pd.DataFrame:
+def _filtrar_empresas_360(df: pd.DataFrame, filtros: dict[str, Any]) -> pd.DataFrame:
     """Aplica filtros comerciales opcionales sobre gold_dim_empresa_360."""
     res = df.copy()
     if res.empty:
@@ -62,9 +60,7 @@ def _filtrar_empresas_360(
     return res
 
 
-def _filtrar_asistencias_bi(
-    df: pd.DataFrame, filtros: dict[str, Any]
-) -> pd.DataFrame:
+def _filtrar_asistencias_bi(df: pd.DataFrame, filtros: dict[str, Any]) -> pd.DataFrame:
     """Aplica filtros temporales y de oferta sobre gold_fact_asistencias_bi."""
     res = df.copy()
     if res.empty:
@@ -271,17 +267,16 @@ class DashboardSilverRepository:
         if asi.empty or ev_kpis.empty:
             return []
 
-        ev_map = {
-            int(r["id_evento"]): r.to_dict() for _, r in ev_kpis.iterrows()
-        }
+        ev_map = {int(r["id_evento"]): r.to_dict() for _, r in ev_kpis.iterrows()}
         filas: list[dict[str, Any]] = []
         for id_ev, sub in asi.groupby("id_evento"):
-            info = ev_map.get(int(id_ev), {})
+            ev_int = int(str(id_ev))
+            info = ev_map.get(ev_int, {})
             af = int((sub["tipo_asistencia"] == "Afiliado").sum())
             no_af = int(len(sub)) - af
             filas.append(
                 {
-                    "id_evento": int(id_ev),
+                    "id_evento": ev_int,
                     "nombre_evento": _limpiar_val(info.get("nombre_evento")),
                     "linea_oferta": _limpiar_val(info.get("linea_oferta_2027")),
                     "modalidad": _limpiar_val(info.get("modalidad")),
@@ -377,7 +372,8 @@ class DashboardSilverRepository:
                 if not nps_s.empty
                 else None
             )
-            ev_id_clean = int(id_ev) if int(id_ev) != -1 else None
+            ev_num = int(str(id_ev))
+            ev_id_clean = ev_num if ev_num != -1 else None
             salida.append(
                 {
                     "id_evento": ev_id_clean,
@@ -531,9 +527,7 @@ class DashboardSilverRepository:
         mov = self.snap.silver_movimientos.copy()
         if mov.empty:
             return []
-        fechas = mov["fecha_cierre_o_factura"].fillna(
-            mov["fecha_expiracion_afiliacion"]
-        )
+        fechas = mov["fecha_cierre_o_factura"].fillna(mov["fecha_expiracion_afiliacion"])
         mov["periodo_mes"] = (
             pd.to_datetime(fechas, errors="coerce")
             .dt.strftime("%Y-%m")
@@ -624,9 +618,7 @@ class DashboardSilverRepository:
             kid = str(k["kam_id"])
             sub_a = act[act["kam_id"] == kid] if not act.empty else pd.DataFrame()
             n_act = int(len(sub_a))
-            con_srv = (
-                int((sub_a["total_eventos_anio"] > 0).sum()) if n_act > 0 else 0
-            )
+            con_srv = int((sub_a["total_eventos_anio"] > 0).sum()) if n_act > 0 else 0
             venc90 = (
                 int(
                     (
@@ -660,9 +652,7 @@ class DashboardSilverRepository:
                 else 0
             )
             cie_cnt = (
-                int(sub_m["es_cierre_facturado"].eq(True).sum())
-                if not sub_m.empty
-                else 0
+                int(sub_m["es_cierre_facturado"].eq(True).sum()) if not sub_m.empty else 0
             )
             res.append(
                 {

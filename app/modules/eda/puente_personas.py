@@ -58,9 +58,10 @@ def _actualizar_evidencia(
 
     if PRIORIDAD_FUENTE[fuente] > PRIORIDAD_FUENTE[actual["fuente_relacion"]]:
         actual["fuente_relacion"] = fuente
-    if PRIORIDAD_VALIDACION[validacion] > PRIORIDAD_VALIDACION[
-        actual["estado_validacion"]
-    ]:
+    if (
+        PRIORIDAD_VALIDACION[validacion]
+        > PRIORIDAD_VALIDACION[actual["estado_validacion"]]
+    ):
         actual["estado_validacion"] = validacion
     if es_principal_crm:
         actual["es_principal_crm"] = True
@@ -152,9 +153,7 @@ def _extraer_evidencias_eventos_y_encuestas(
                 fecha=normalizar_fecha_iso(r_enc.get("fecha_encuesta")),
                 fuente="ENCUESTA",
                 validacion=(
-                    "INFERIDO_DOMINIO"
-                    if "dominio" in metodo
-                    else "REPORTADO_FORMULARIO"
+                    "INFERIDO_DOMINIO" if "dominio" in metodo else "REPORTADO_FORMULARIO"
                 ),
             )
 

@@ -167,6 +167,12 @@ def ingerir_y_validar_bronze(
         nombre: cfg.origen_normalizados_dir / f"{nombre}.csv"
         for nombre in ARCHIVOS_REQUERIDOS_ORIGEN
     }
+    if any(not ruta.exists() for ruta in mapa_origen.values()):
+        if cfg.origen_raw_csv_dir is not None and cfg.origen_raw_csv_dir.exists():
+            # pylint: disable=import-outside-toplevel
+            from app.modules.eda.raw_builder import construir_normalizados_desde_raw
+
+            construir_normalizados_desde_raw(cfg)
 
     bronze_dfs: dict[str, pd.DataFrame] = {}
     hashes_rows: list[dict[str, Any]] = []

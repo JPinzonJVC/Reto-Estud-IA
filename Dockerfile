@@ -50,9 +50,9 @@ COPY --chown=appuser:appgroup . /app
 # Incorporar el bundle React generado sin incluir Node.js en el runtime.
 COPY --from=frontend-builder --chown=appuser:appgroup /build/app/static/react /app/app/static/react
 
-# Asegurar directorios de entrada de datos y logs con permisos adecuados
-RUN mkdir -p /app/input /app/logs && \
-    chown -R appuser:appgroup /app/input /app/logs
+# Asegurar directorios de entrada de datos, artefactos ML y logs con permisos adecuados
+RUN mkdir -p /app/input /app/logs /var/lib/actho/ml_artifacts && \
+    chown -R appuser:appgroup /app/input /app/logs /var/lib/actho
 
 USER appuser
 

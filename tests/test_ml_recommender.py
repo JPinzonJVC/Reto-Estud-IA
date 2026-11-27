@@ -28,9 +28,7 @@ def test_recommendation_counts_distinct_events_not_participant_rows() -> None:
 
 def test_recommendation_returns_empty_when_no_history_is_linked() -> None:
     """No inventa una recomendación para una empresa sin asistencia enlazada."""
-    attendance = pd.DataFrame(
-        columns=["id_empresa", "id_evento", "linea_oferta_2027"]
-    )
+    attendance = pd.DataFrame(columns=["id_empresa", "id_evento", "linea_oferta_2027"])
 
     result = recommend_historical_line(attendance)
 

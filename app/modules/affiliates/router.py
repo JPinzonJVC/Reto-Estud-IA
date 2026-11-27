@@ -7,9 +7,11 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.modules.affiliates.service import AffiliatesService
 from app.modules.dashboard.repository import DashboardSilverRepository
 
-from app.modules.affiliates.service import AffiliatesService
+# FastAPI define sus parámetros de query como argumentos del endpoint.
+# pylint: disable=too-many-positional-arguments
 
 affiliates_router = APIRouter(
     prefix="/affiliates",

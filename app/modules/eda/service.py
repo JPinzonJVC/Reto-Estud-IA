@@ -73,7 +73,11 @@ class EtlService:
 
         try:
             cfg = self._construir_configuracion(request.fecha_corte)
-            if not cfg.origen_normalizados_dir.exists():
+            has_norm = cfg.origen_normalizados_dir.exists()
+            has_raw = (
+                cfg.origen_raw_csv_dir is not None and cfg.origen_raw_csv_dir.exists()
+            )
+            if not has_norm and not has_raw:
                 raise EtlInputNotFoundError(
                     f"No existe el directorio de fuentes: {cfg.origen_normalizados_dir}"
                 )

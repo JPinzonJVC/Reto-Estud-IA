@@ -5,9 +5,6 @@ import io
 from datetime import date
 from typing import Any
 
-# FastAPI define sus parámetros de query como argumentos del endpoint.
-# pylint: disable=too-many-positional-arguments
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
@@ -16,6 +13,9 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.modules.dashboard.repository import DashboardSilverRepository
 from app.modules.retention.service import RetentionService
+
+# FastAPI define sus parámetros de query como argumentos del endpoint.
+# pylint: disable=too-many-positional-arguments
 
 retention_router = APIRouter(
     prefix="/retention",

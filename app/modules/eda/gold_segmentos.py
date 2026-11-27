@@ -145,9 +145,7 @@ def _crear_filas_desde_interacciones(
         info = emp_lookup.get(emp_id, {}) if emp_id else {}
         aut_val = None if pd.isna(row.get(col_aut)) else bool(row.get(col_aut))
         tema_val = (
-            str(row[col_tema])
-            if col_tema and pd.notna(row.get(col_tema))
-            else None
+            str(row[col_tema]) if col_tema and pd.notna(row.get(col_tema)) else None
         )
         filas.append(
             {
@@ -330,15 +328,14 @@ def construir_mart_segmentos_comunicaciones(
     """Construye gold_mart_segmentos_comunicaciones y exporta los 8 CSV de campaña."""
     t0 = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     contacto_emp, aut_persona = _construir_mapas_habeas_y_contactos(silver)
-    emp_lookup = {
-        str(r["id_empresa"]): r.to_dict() for _, r in df_emp_360.iterrows()
+    emp_lookup: dict[str, dict[str, Any]] = {
+        str(r["id_empresa"]): {str(k): v for k, v in r.to_dict().items()}
+        for _, r in df_emp_360.iterrows()
     }
     activas = df_emp_360[df_emp_360["tipo_relacion_actho"] == "AFILIADO_ACTIVO"].copy()
 
     segs = {
-        **_generar_segmentos_empresa(
-            activas, contacto_emp, aut_persona, cfg.fecha_corte
-        ),
+        **_generar_segmentos_empresa(activas, contacto_emp, aut_persona, cfg.fecha_corte),
         **_generar_segmentos_interaccion(emp_lookup, df_asist_bi, df_enc_bi),
     }
 
@@ -371,9 +368,7 @@ def construir_mart_segmentos_comunicaciones(
         if todas
         else pd.DataFrame(columns=COLUMNAS_SEGMENTOS)
     )
-    guardar_tabla_medallion(
-        df_mart_seg, cfg.gold_dir, "mart_segmentos_comunicaciones"
-    )
+    guardar_tabla_medallion(df_mart_seg, cfg.gold_dir, "mart_segmentos_comunicaciones")
     bitacora.registrar_carga(
         "silver+gold -> gold/mart_segmentos_comunicaciones",
         t0,

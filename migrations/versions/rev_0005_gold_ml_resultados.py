@@ -30,18 +30,23 @@ def upgrade() -> None:
         sa.Column("metricas", sa.JSON(), nullable=False),
         sa.Column("hash_dataset", sa.String(length=64), nullable=True),
         sa.Column(
-            "creado_en", sa.DateTime(timezone=True),
+            "creado_en",
+            sa.DateTime(timezone=True),
             server_default=sa.text("CURRENT_TIMESTAMP"),
             nullable=False,
         ),
         sa.Column(
-            "actualizado_en", sa.DateTime(timezone=True),
+            "actualizado_en",
+            sa.DateTime(timezone=True),
             server_default=sa.text("CURRENT_TIMESTAMP"),
             nullable=False,
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
-            "caso_uso", "id_empresa", "version_modelo", "fecha_corte",
+            "caso_uso",
+            "id_empresa",
+            "version_modelo",
+            "fecha_corte",
             name="uq_gold_ml_resultado_caso_empresa_version_corte",
         ),
     )
@@ -49,7 +54,8 @@ def upgrade() -> None:
         "ix_gold_ml_resultados_empresa", "gold_ml_resultados_empresa", ["id_empresa"]
     )
     op.create_index(
-        "ix_gold_ml_resultados_caso_estado", "gold_ml_resultados_empresa",
+        "ix_gold_ml_resultados_caso_estado",
+        "gold_ml_resultados_empresa",
         ["caso_uso", "estado_evaluacion"],
     )
 

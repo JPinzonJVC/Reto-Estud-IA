@@ -6,9 +6,11 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.modules.analytics.service import AnalyticsService
 from app.modules.dashboard.repository import DashboardSilverRepository
 
-from app.modules.analytics.service import AnalyticsService
+# FastAPI define sus parámetros de query como argumentos del endpoint.
+# pylint: disable=too-many-positional-arguments
 
 analytics_router = APIRouter(
     prefix="/analytics",

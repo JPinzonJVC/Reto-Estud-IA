@@ -1,4 +1,6 @@
-"""Pruebas unitarias para env_vars, extractores desacoplados, watermarks y flujo Prefect."""
+"""Pruebas unitarias para env_vars, extractores desacoplados, watermarks y Prefect."""
+
+# pylint: disable=no-member,import-outside-toplevel
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -39,7 +41,8 @@ def test_env_vars_models_load_dynamically(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setenv("ZOHO_MODULES", "Accounts, Deals")
     monkeypatch.setenv(
         "DRIVE_SCOPES",
-        "https://www.googleapis.com/auth/drive.readonly, https://www.googleapis.com/auth/drive.metadata.readonly",
+        "https://www.googleapis.com/auth/drive.readonly, "
+        "https://www.googleapis.com/auth/drive.metadata.readonly",
     )
     monkeypatch.setenv("EDA_SCHEDULE_CRON", "0 2 * * *")
     monkeypatch.setenv("EDA_SCHEDULE_TIMEZONE", "UTC")
@@ -258,7 +261,10 @@ def test_google_drive_extractor_recursive_subfolders(tmp_path: Path) -> None:
                 {
                     "id": "xlsx-s1",
                     "name": "datos.xlsx",
-                    "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    "mimeType": (
+                        "application/vnd.openxmlformats-officedocument."
+                        "spreadsheetml.sheet"
+                    ),
                     "md5Checksum": "hash1",
                     "modifiedTime": "2026-11-10T10:00:00Z",
                 }
@@ -269,7 +275,10 @@ def test_google_drive_extractor_recursive_subfolders(tmp_path: Path) -> None:
                 {
                     "id": "xlsx-s2",
                     "name": "datos.xlsx",
-                    "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    "mimeType": (
+                        "application/vnd.openxmlformats-officedocument."
+                        "spreadsheetml.sheet"
+                    ),
                     "md5Checksum": "hash2",
                     "modifiedTime": "2026-11-17T10:00:00Z",
                 }

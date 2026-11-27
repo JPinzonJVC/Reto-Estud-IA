@@ -170,10 +170,7 @@ def _cargar_insumos_auditoria(session: Session | None) -> dict[str, Any]:
                 for cg in session.query(AuditCarga).all()
             ],
             "calidad": [
-                {
-                    c.name: getattr(q, c.name)
-                    for c in AuditCalidadDatos.__table__.columns
-                }
+                {c.name: getattr(q, c.name) for c in AuditCalidadDatos.__table__.columns}
                 for q in session.query(AuditCalidadDatos).all()
             ],
             "reconcil": {
@@ -197,15 +194,11 @@ def _cargar_insumos_auditoria(session: Session | None) -> dict[str, Any]:
         "hashes": _leer_parquet_seguro("audit", "audit_hashes_fuentes_bronze").to_dict(
             orient="records"
         ),
-        "cargas": _leer_parquet_seguro("audit", "audit_cargas").to_dict(
-            orient="records"
-        ),
+        "cargas": _leer_parquet_seguro("audit", "audit_cargas").to_dict(orient="records"),
         "calidad": _leer_parquet_seguro("audit", "audit_calidad_datos").to_dict(
             orient="records"
         ),
-        "reconcil": {
-            str(r["Tabla"]): r for r in df_rec.to_dict(orient="records")
-        },
+        "reconcil": {str(r["Tabla"]): r for r in df_rec.to_dict(orient="records")},
         "rechazados_cnt": int(
             len(_leer_parquet_seguro("audit", "audit_registros_rechazados"))
         ),
@@ -267,9 +260,7 @@ class EtlMonitorService:
         orch = OrchestrationEnvs()
         drive_cfg = GoogleDriveEnvs()
         zoho_cfg = ZohoEnvs()
-        prefect_live = consultar_prefect_live(
-            orch.prefect_api_url, orch.deployment_name
-        )
+        prefect_live = consultar_prefect_live(orch.prefect_api_url, orch.deployment_name)
         eff_cron = str(prefect_live.get("active_cron") or orch.schedule_cron)
         eff_tz = str(prefect_live.get("active_timezone") or orch.schedule_timezone)
         try:
@@ -627,11 +618,14 @@ class EtlMonitorService:
         if _sesion_tiene_auditoria(self.session):
             assert self.session is not None
             total = int(
-                self.session.execute(text(f"SELECT COUNT(*) FROM {sql_table}")).scalar()
+                self.session.execute(
+                    text(f"SELECT COUNT(*) FROM {sql_table}")  # nosec B608
+                ).scalar()
                 or 0
             )
             res = self.session.execute(
-                text(f"SELECT * FROM {sql_table} LIMIT :lim"), {"lim": limit}
+                text(f"SELECT * FROM {sql_table} LIMIT :lim"),  # nosec B608
+                {"lim": limit},
             )
             cols = list(res.keys())
             filas = [

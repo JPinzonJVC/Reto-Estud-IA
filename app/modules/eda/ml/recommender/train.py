@@ -20,9 +20,9 @@ def run_recommendation_baseline() -> dict[str, Any]:
         "companies_with_recommendation": int(len(recommendations)),
         "line_distribution": {
             str(line): int(count)
-            for line, count in recommendations[
-                "linea_2027_recomendada_baseline"
-            ].value_counts().items()
+            for line, count in recommendations["linea_2027_recomendada_baseline"]
+            .value_counts()
+            .items()
         },
         "baseline": "MOST_DISTINCT_EVENTS_PER_COMPANY",
         "attendance_probability": None,

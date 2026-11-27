@@ -38,9 +38,7 @@ def test_post_etl_run_y_consulta_exitosa(
 ) -> None:
     """Ejecuta POST /etl/run y verifica el resumen en GET /etl/runs/{run_id}."""
     cfg_tmp = _crear_config_temporal(tmp_path)
-    monkeypatch.setattr(
-        "app.modules.eda.service.cargar_configuracion", lambda: cfg_tmp
-    )
+    monkeypatch.setattr("app.modules.eda.service.cargar_configuracion", lambda: cfg_tmp)
 
     def fake_pipeline(
         cfg: ConfiguracionETL,
@@ -104,14 +102,10 @@ def test_post_etl_run_fecha_invalida_retorna_422() -> None:
 
 def test_post_etl_run_conflicto_si_ya_esta_corriendo() -> None:
     """Retorna 409 Conflict si ya existe una ejecución ETL en progreso."""
-    etl_service._lock.acquire()
-    try:
+    with etl_service._lock:
         client = TestClient(app)
         resp = client.post("/etl/run")
         assert resp.status_code == 409
-    finally:
-        if etl_service._lock.locked():
-            etl_service._lock.release()
 
 
 def test_post_etl_run_sin_directorio_fuentes_retorna_400(
@@ -119,9 +113,7 @@ def test_post_etl_run_sin_directorio_fuentes_retorna_400(
 ) -> None:
     """Retorna 400 Bad Request si no existe el directorio de fuentes normalizadas."""
     cfg_tmp = _crear_config_temporal(tmp_path, crear_origen=False)
-    monkeypatch.setattr(
-        "app.modules.eda.service.cargar_configuracion", lambda: cfg_tmp
-    )
+    monkeypatch.setattr("app.modules.eda.service.cargar_configuracion", lambda: cfg_tmp)
     client = TestClient(app)
     resp = client.post("/etl/run")
     assert resp.status_code == 400
@@ -132,9 +124,7 @@ def test_get_etl_run_inexistente_retorna_404(
 ) -> None:
     """Retorna 404 Not Found al consultar un run_id inexistente."""
     cfg_tmp = _crear_config_temporal(tmp_path)
-    monkeypatch.setattr(
-        "app.modules.eda.service.cargar_configuracion", lambda: cfg_tmp
-    )
+    monkeypatch.setattr("app.modules.eda.service.cargar_configuracion", lambda: cfg_tmp)
     client = TestClient(app)
     resp = client.get("/etl/runs/ETL-NO-EXISTE")
     assert resp.status_code == 404

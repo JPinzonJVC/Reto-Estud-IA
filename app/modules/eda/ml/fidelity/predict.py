@@ -30,9 +30,7 @@ def predict_fidelity_clusters(
     return pd.DataFrame(
         {
             "id_empresa": eligible["id_empresa"].to_numpy(),
-            "score_fidelidad_ml_0_100": eligible[
-                "score_fidelidad_ml_0_100"
-            ].to_numpy(),
+            "score_fidelidad_ml_0_100": eligible["score_fidelidad_ml_0_100"].to_numpy(),
             "cluster_id": labels.astype(int),
         }
     )

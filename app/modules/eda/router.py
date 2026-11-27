@@ -151,7 +151,7 @@ def trigger_etl_from_monitor(
         return {
             "modo": "background_local",
             "run_id": accepted.run_id,
-            "state": accepted.estado_inicial,
+            "state": accepted.estado_ejecucion,
         }
     except Exception as exc:
         raise HTTPException(

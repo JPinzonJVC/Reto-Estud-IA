@@ -192,20 +192,26 @@ def construir_fact_encuestas_bi(
         df_enc[cols_likert].apply(pd.to_numeric, errors="coerce").astype("float64")
     )
     prom_fila = mat_likert.mean(axis=1).round(2)
-    niv_sat = np.where(
-        prom_fila.isna(),
-        None,
-        np.where(prom_fila >= 4.5, "ALTA", np.where(prom_fila >= 3.75, "MEDIA", "BAJA")),
-    )
+    niv_sat = [
+        (
+            None
+            if pd.isna(v)
+            else ("ALTA" if v >= 4.5 else ("MEDIA" if v >= 3.75 else "BAJA"))
+        )
+        for v in prom_fila
+    ]
 
     nps_num = pd.to_numeric(
         df_enc["pregunta_recomendacion_nps_0_10"], errors="coerce"
     ).astype("float64")
-    cat_nps = np.where(
-        nps_num.isna(),
-        None,
-        np.where(nps_num >= 9, "PROMOTOR", np.where(nps_num >= 7, "PASIVO", "DETRACTOR")),
-    )
+    cat_nps = [
+        (
+            None
+            if pd.isna(v)
+            else ("PROMOTOR" if v >= 9 else ("PASIVO" if v >= 7 else "DETRACTOR"))
+        )
+        for v in nps_num
+    ]
     periodo, trimestre = _derivar_periodo_y_trimestre(df_enc["fecha_encuesta"])
     ciudades_enc = [
         mapa_geo[int(cid)][0] if pd.notna(cid) and int(cid) in mapa_geo else None
@@ -241,9 +247,7 @@ def construir_fact_encuestas_bi(
             "pregunta_recomendacion_nps_0_10": nps_num.round().astype("Int64"),
             "categoria_nps_0_10": cat_nps,
             "temarios_sugeridos": df_enc["temarios_sugeridos"],
-            "categoria_tema_nlp": df_enc["temarios_sugeridos"].apply(
-                clasificar_tema_nlp
-            ),
+            "categoria_tema_nlp": df_enc["temarios_sugeridos"].apply(clasificar_tema_nlp),
             "desea_recibir_actualizaciones": df_enc["desea_recibir_actualizaciones"],
         }
     )
@@ -327,9 +331,9 @@ def _resumir_asistencias_y_encuestas_por_empresa(
             satisfaccion_reciente_1_5=("promedio_respuesta_1_5", "last"),
             nps_reciente_0_10=("pregunta_recomendacion_nps_0_10", "last"),
         )
-        agg_enc["satisfaccion_promedio_1_5"] = agg_enc[
-            "satisfaccion_promedio_1_5"
-        ].round(2)
+        agg_enc["satisfaccion_promedio_1_5"] = agg_enc["satisfaccion_promedio_1_5"].round(
+            2
+        )
     else:
         agg_enc = pd.DataFrame(
             columns=[
@@ -368,9 +372,7 @@ def _aplicar_alertas_y_semaforo_hibrido(
     base["alerta_vencimiento_90d"] = base["tramo_vencimiento"].isin(
         {"VENCIDA", "0_30D", "31_60D", "61_90D"}
     )
-    base["alerta_sin_participacion_trimestre"] = (
-        base["asistencias_ultimo_trimestre"] == 0
-    )
+    base["alerta_sin_participacion_trimestre"] = base["asistencias_ultimo_trimestre"] == 0
     sat_rec_f = pd.to_numeric(base["satisfaccion_reciente_1_5"], errors="coerce")
     base["alerta_baja_satisfaccion"] = sat_rec_f.notna() & (sat_rec_f < sat_min)
     base["alerta_monocontacto"] = (base["total_eventos_anio"] >= 1) & (
@@ -406,7 +408,9 @@ def _aplicar_alertas_y_semaforo_hibrido(
     )
     es_act = base["tipo_relacion_actho"] == "AFILIADO_ACTIVO"
     base["puntaje_riesgo_heuristico"] = pd.Series(
-        np.where(es_act, pts_bruto, pd.NA), dtype="Int64"
+        [int(p) if act else pd.NA for act, p in zip(es_act, pts_bruto)],
+        index=base.index,
+        dtype="Int64",
     )
 
     base = inicializar_columnas_ml_reservadas(base)
@@ -511,9 +515,11 @@ def construir_dim_empresa_360(
     )
 
     geo_res = [
-        mapa_geo[int(cid)]
-        if pd.notna(cid) and int(cid) in mapa_geo
-        else (None, None, None)
+        (
+            mapa_geo[int(cid)]
+            if pd.notna(cid) and int(cid) in mapa_geo
+            else (None, None, None)
+        )
         for cid in base["id_ciudad_empresa"]
     ]
     base["nombre_ciudad"] = [g[0] for g in geo_res]
@@ -664,9 +670,7 @@ def construir_dim_evento_kpis(
         df_emp_360[df_emp_360["tipo_relacion_actho"] == "AFILIADO_ACTIVO"]["id_empresa"]
     )
     filas = [
-        _calcular_fila_kpi_evento(
-            ev, df_asist_bi, df_enc_bi, emp_activas_set, mapa_geo
-        )
+        _calcular_fila_kpi_evento(ev, df_asist_bi, df_enc_bi, emp_activas_set, mapa_geo)
         for _, ev in dim_ev.iterrows()
     ]
     df_out = pd.DataFrame(filas)

@@ -90,9 +90,7 @@ def _agrupar_satisfaccion_df(df_enc: pd.DataFrame) -> list[dict[str, Any]]:
                     else round(float(r["promedio_satisfaccion_general_1_5"]), 2)
                 ),
                 "respuestas_alta_satisfaccion": int(r["respuestas_alta_satisfaccion"]),
-                "respuestas_media_satisfaccion": int(
-                    r["respuestas_media_satisfaccion"]
-                ),
+                "respuestas_media_satisfaccion": int(r["respuestas_media_satisfaccion"]),
                 "respuestas_baja_satisfaccion": int(r["respuestas_baja_satisfaccion"]),
                 "nps_oficial_0_10": nps_val,
                 "estado_calculo_nps": (

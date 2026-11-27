@@ -131,9 +131,7 @@ def cargar_snapshot_dwh(session: Session | None = None) -> SnapshotDWH:
         fuente="parquet",
         dim_empresa_360=_leer_parquet_cache(GOLD_DIR / "dim_empresa_360.parquet"),
         dim_evento_kpis=_leer_parquet_cache(GOLD_DIR / "dim_evento_kpis.parquet"),
-        fact_asistencias_bi=_leer_parquet_cache(
-            GOLD_DIR / "fact_asistencias_bi.parquet"
-        ),
+        fact_asistencias_bi=_leer_parquet_cache(GOLD_DIR / "fact_asistencias_bi.parquet"),
         fact_encuestas_bi=_leer_parquet_cache(GOLD_DIR / "fact_encuestas_bi.parquet"),
         fact_evolucion_mes=_leer_parquet_cache(
             GOLD_DIR / "fact_evolucion_membresias_mes.parquet"

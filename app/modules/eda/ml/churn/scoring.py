@@ -19,7 +19,7 @@ def _number(value: Any) -> float | None:
     return number if isfinite(number) else None
 
 
-def _has_signal(row: Mapping[str, Any]) -> tuple[int, list[str], bool]:
+def _has_signal(row: Mapping[Any, Any]) -> tuple[int, list[str], bool]:
     """Calcula puntos y motivos, evitando duplicar dos señales de inactividad."""
     points = 0
     flags: list[str] = []

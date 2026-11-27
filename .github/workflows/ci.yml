@@ -121,10 +121,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
 
-      - name: Generar artefactos de modelo si no existen
-        run: |
-          python -m app.modules.machine_learning.training
-
       - name: Ejecutar suite de pruebas con Pytest y medir cobertura
         run: |
           pytest --cov=app --cov-report=term-missing --cov-report=xml --cov-report=html --cov-fail-under=80

@@ -1,7 +1,7 @@
 """Comparación temporalmente agnóstica de clustering descriptivo RFM-S."""
 
-from itertools import combinations
 import json
+from itertools import combinations
 from typing import Any
 
 import numpy as np
@@ -139,9 +139,7 @@ def summarize_cluster_profiles(
     labels = pipeline.fit_predict(features)
     profiled = features.copy()
     profiled["cluster"] = labels
-    grouped = profiled.groupby("cluster")[list(RFM_COMPONENTS)].agg(
-        ["mean", "median"]
-    )
+    grouped = profiled.groupby("cluster")[list(RFM_COMPONENTS)].agg(["mean", "median"])
     sizes = profiled["cluster"].value_counts().sort_index()
     profiles: list[dict[str, Any]] = []
     for cluster_id in grouped.index:
@@ -185,9 +183,7 @@ def run_fidelity_audit() -> dict[str, Any]:
         ),
         "rfm_s_score_coverage": int(features["score_fidelidad_ml_0_100"].notna().sum()),
         "cluster_cohort": int(len(cohort)),
-        "nps_coverage": round(
-            float(raw["nps_reciente_0_10"].notna().mean()), 4
-        ),
+        "nps_coverage": round(float(raw["nps_reciente_0_10"].notna().mean()), 4),
         "best_candidate": best_candidate,
         "cluster_profiles": profiles,
         "candidates": candidates,

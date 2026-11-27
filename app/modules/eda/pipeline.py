@@ -6,9 +6,11 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+from sqlalchemy import inspect
 from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session
 
-from app.database import ping_database
+from app.database import get_engine, ping_database
 from app.modules.eda.audit import BitacoraAuditoria, persistir_auditoria_final
 from app.modules.eda.bronze import (
     calcular_sha256_archivo,
@@ -18,6 +20,7 @@ from app.modules.eda.bronze import (
 )
 from app.modules.eda.config import ConfiguracionETL, cargar_configuracion
 from app.modules.eda.gold import construir_capa_gold
+from app.modules.eda.ml.persistence import generate_descriptive_results
 from app.modules.eda.postgres_loader import cargar_tablas_en_postgres
 from app.modules.eda.silver import procesar_capa_silver
 
@@ -131,6 +134,13 @@ def ejecutar_pipeline_completo(
             {"silver": silver, "gold": gold, "audit": audit_tabs},
             engine=db_engine,
         )
+        target_engine = db_engine or get_engine()
+        if inspect(target_engine).has_table("gold_ml_resultados_empresa"):
+            with Session(bind=target_engine) as ml_session:
+                ml_counts = generate_descriptive_results(ml_session)
+            conteos_db["gold_ml_resultados_empresa"] = sum(
+                int(v) for k, v in ml_counts.items() if k != "id_ejecucion"
+            )
 
     return {
         "config": cfg,

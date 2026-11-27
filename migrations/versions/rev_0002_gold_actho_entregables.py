@@ -44,9 +44,7 @@ def upgrade(bind: Engine | Connection | None = None) -> None:
     if "gold_agg_satisfaccion_encuestas" not in tablas:
         return
 
-    cols = {
-        c["name"] for c in inspector.get_columns("gold_agg_satisfaccion_encuestas")
-    }
+    cols = {c["name"] for c in inspector.get_columns("gold_agg_satisfaccion_encuestas")}
     if "tipo_encuesta" not in cols:
         _ejecutar_sql(
             target,

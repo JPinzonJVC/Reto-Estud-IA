@@ -82,6 +82,7 @@ logs/*
 *.log
 
 # Data input & datasets (no se suben al repositorio, se conserva estructura Medallion)
+input.zip
 input/*
 !input/.gitkeep
 !input/bronze/

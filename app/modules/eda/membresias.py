@@ -112,8 +112,7 @@ def _cargar_ciclos_previos_verificables(
             continue
 
         est_det = (
-            limpiar_texto_y_mojibake(row.get("estado_membresia_duplicado"))
-            or "Cancelado"
+            limpiar_texto_y_mojibake(row.get("estado_membresia_duplicado")) or "Cancelado"
         )
         emp_id = str(row["id_empresa"]).strip()
         ciclos_por_emp.setdefault(emp_id, []).append(
@@ -150,9 +149,7 @@ def _construir_ciclo_empresa_vigente(
     """Construye el diccionario del ciclo principal de membresía de una empresa."""
     emp_id = str(row["id_empresa"]).strip()
     if bool(row.get("en_crm_afiliados", False)):
-        f_afil = _sanear_fecha_membresia(
-            row.get("fecha_afiliacion"), anio_max, anomalias
-        )
+        f_afil = _sanear_fecha_membresia(row.get("fecha_afiliacion"), anio_max, anomalias)
         return {
             "id_empresa": emp_id,
             "par_cat": _homologar_par_categoria(
@@ -208,7 +205,9 @@ def _extraer_altas_fuera_crm(df_mov_b: pd.DataFrame) -> dict[str, dict[str, Any]
         if bool(m_row.get("es_cierre_facturado", False)) and (
             "Nueva Afiliación" in t_mov or "Nuevo Afiliado" in t_mov
         ):
-            altas[str(m_row["id_empresa"]).strip()] = m_row.to_dict()
+            altas[str(m_row["id_empresa"]).strip()] = {
+                str(k): v for k, v in m_row.to_dict().items()
+            }
     return altas
 
 
@@ -268,9 +267,7 @@ def construir_catalogo_y_membresias(
         .drop(columns=["par_cat", "_sort_ini"])
         .reset_index(drop=True)
     )
-    df_mem.insert(
-        0, "id_membresia", [f"MEM-{i:04d}" for i in range(1, len(df_mem) + 1)]
-    )
+    df_mem.insert(0, "id_membresia", [f"MEM-{i:04d}" for i in range(1, len(df_mem) + 1)])
     df_mem = df_mem[
         [
             "id_membresia",

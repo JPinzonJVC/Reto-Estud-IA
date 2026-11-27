@@ -1,9 +1,9 @@
 """Flujos y tareas de Prefect para automatizar el pipeline EDA Medallion."""
 
 import logging
-from pathlib import Path
 import shutil
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, TypeVar
 
 from sqlalchemy.engine import Engine
@@ -33,7 +33,7 @@ try:
     PREFECT_AVAILABLE = True
 except ImportError:  # pragma: no cover - fallback para entornos sin prefect instalado
     PREFECT_AVAILABLE = False
-    NO_CACHE: Any = None
+    NO_CACHE = None  # type: ignore[assignment]
 
     def flow(*_args: Any, **_kwargs: Any) -> Callable[[_F], _F]:
         """Decorador fallback cuando prefect no está instalado.

@@ -397,7 +397,7 @@ def normalizar_sector(valor: Any) -> str | None:
     return texto
 
 
-def normalizar_dataframe_silver(
+def normalizar_dataframe_silver(  # pylint: disable=too-many-positional-arguments
     df: pd.DataFrame,
     cols_texto: tuple[str, ...] = (),
     cols_bool: tuple[str, ...] = (),
@@ -406,7 +406,7 @@ def normalizar_dataframe_silver(
     cols_sector: tuple[str, ...] = (),
     cols_pais: tuple[str, ...] = (),
 ) -> pd.DataFrame:
-    """Aplica reglas de normalización Silver sobre columnas de texto, bool, fecha y catálogos.
+    """Aplica reglas de normalización Silver sobre texto, bool, fecha y catálogos.
 
     Args:
         df: DataFrame de entrada proveniente de Bronze.

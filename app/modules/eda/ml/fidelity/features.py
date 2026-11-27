@@ -51,10 +51,9 @@ def build_rfm_s_features(
         result["total_eventos_anio"], errors="coerce"
     ).clip(lower=0)
     community_values = result[list(COMMUNITY_COLUMNS)].fillna(False).astype(bool)
-    result["_amplitude_value"] = (
-        pd.to_numeric(result["personas_distintas_anio"], errors="coerce").fillna(0)
-        + community_values.sum(axis=1)
-    )
+    result["_amplitude_value"] = pd.to_numeric(
+        result["personas_distintas_anio"], errors="coerce"
+    ).fillna(0) + community_values.sum(axis=1)
     result["_tenure_value"] = pd.to_numeric(
         result["total_ciclos_membresia"], errors="coerce"
     ).clip(lower=0)
@@ -71,15 +70,16 @@ def build_rfm_s_features(
         ("tenure", "_tenure_value"),
         ("satisfaction", "_satisfaction_value"),
     ):
-        result[component] = 100.0 * result[source].rank(
-            method="average", pct=True
-        )
+        result[component] = 100.0 * result[source].rank(method="average", pct=True)
 
     score_columns = list(RFM_COMPONENTS)
     result["rfm_s_component_count"] = result[score_columns].notna().sum(axis=1)
-    result["score_fidelidad_ml_0_100"] = result[score_columns].mean(
-        axis=1, skipna=True
-    ).where(result["_satisfaction_value"].notna()).round(2)
+    result["score_fidelidad_ml_0_100"] = (
+        result[score_columns]
+        .mean(axis=1, skipna=True)
+        .where(result["_satisfaction_value"].notna())
+        .round(2)
+    )
     return result
 
 

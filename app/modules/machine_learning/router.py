@@ -10,11 +10,11 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.modules.dashboard.data_store import SnapshotDWH, cargar_snapshot_dwh
-from app.modules.eda.ml.persistence import list_result_page, list_results
 from app.modules.eda.ml.common.registry import (
     ModelManifest,
     artifacts_root_from_environment,
 )
+from app.modules.eda.ml.persistence import list_result_page, list_results
 from app.modules.machine_learning.schemas import (
     EstadoEspacioMLResponse,
     PaginaResultadosMlResponse,
@@ -66,9 +66,7 @@ def get_ml_overview(db: Session = Depends(get_db)) -> dict[str, Any]:
             (case["fecha_corte"] for case in cases if case["fecha_corte"]),
             default=None,
         ),
-        "resultados_totales": sum(
-            case["resultados_disponibles"] for case in cases
-        ),
+        "resultados_totales": sum(case["resultados_disponibles"] for case in cases),
         "modelos_aprobados_disponibles": _approved_model_count(),
         "casos_uso": cases,
     }
@@ -99,9 +97,7 @@ def _approved_model_count() -> int:
 
 # FastAPI representa los filtros como argumentos tipados de query.
 # pylint: disable=too-many-positional-arguments
-@ml_router.get(
-    "/resultados/{caso_uso}", response_model=PaginaResultadosMlResponse
-)
+@ml_router.get("/resultados/{caso_uso}", response_model=PaginaResultadosMlResponse)
 def get_ml_results(
     caso_uso: str,
     id_empresa: str | None = None,
@@ -114,7 +110,9 @@ def get_ml_results(
 ) -> dict[str, Any]:
     """Consulta resultados Gold descriptivos del corte más reciente."""
     cases = {
-        "fidelidad_rfm_s", "recomendacion_linea", "churn_heuristico",
+        "fidelidad_rfm_s",
+        "recomendacion_linea",
+        "churn_heuristico",
         "lead_prioridad",
     }
     if caso_uso not in cases:
@@ -227,6 +225,14 @@ def get_ml_status(db: Session = Depends(get_db)) -> EstadoEspacioMLResponse:
     )
 
 
+def _df_records_clean(df: pd.DataFrame) -> list[dict[str, Any]]:
+    """Convierte un DataFrame a registros reemplazando NaN/NA por None."""
+    return [
+        {str(k): (None if pd.isna(v) else v) for k, v in row.items()}
+        for row in df.to_dict(orient="records")
+    ]
+
+
 @ml_router.get("/fidelidad")
 def get_ml_fidelidad(
     limit: int = Query(default=25, ge=5, le=200),
@@ -258,21 +264,20 @@ def get_ml_fidelidad(
     )
     orden_col = "score_fidelidad_ml_0_100" if activo_ml else "total_eventos_anio"
     muestra = (
-        act.sort_values(orden_col, ascending=False)
-        .head(limit)[
-            [
-                "id_empresa",
-                "kam_id",
-                "nivel_membresia",
-                "total_eventos_anio",
-                "personas_distintas_anio",
-                "satisfaccion_promedio_1_5",
-                "score_fidelidad_ml_0_100",
-                "arquetipo_fidelidad_ml",
+        _df_records_clean(
+            act.sort_values(orden_col, ascending=False).head(limit)[
+                [
+                    "id_empresa",
+                    "kam_id",
+                    "nivel_membresia",
+                    "total_eventos_anio",
+                    "personas_distintas_anio",
+                    "satisfaccion_promedio_1_5",
+                    "score_fidelidad_ml_0_100",
+                    "arquetipo_fidelidad_ml",
+                ]
             ]
-        ]
-        .where(lambda d: pd.notna(d), None)
-        .to_dict(orient="records")
+        )
         if not act.empty
         else []
     )
@@ -320,22 +325,22 @@ def get_ml_publico_eventos(
         else {}
     )
     leads = (
-        emp[emp["tipo_relacion_actho"] == "PROSPECTO_NO_AFILIADO"]
-        .sort_values("total_asistencias_anio", ascending=False)
-        .head(limit)[
-            [
-                "id_empresa",
-                "sector_economico",
-                "total_eventos_anio",
-                "total_asistencias_anio",
-                "linea_2027_mayor_participacion",
-                "linea_2027_recomendada_ml",
-                "prob_asistencia_prox_evento_ml",
-                "score_conversion_lead_ml_0_100",
+        _df_records_clean(
+            emp[emp["tipo_relacion_actho"] == "PROSPECTO_NO_AFILIADO"]
+            .sort_values("total_asistencias_anio", ascending=False)
+            .head(limit)[
+                [
+                    "id_empresa",
+                    "sector_economico",
+                    "total_eventos_anio",
+                    "total_asistencias_anio",
+                    "linea_2027_mayor_participacion",
+                    "linea_2027_recomendada_ml",
+                    "prob_asistencia_prox_evento_ml",
+                    "score_conversion_lead_ml_0_100",
+                ]
             ]
-        ]
-        .where(lambda d: pd.notna(d), None)
-        .to_dict(orient="records")
+        )
         if not emp.empty
         else []
     )
@@ -403,20 +408,19 @@ def get_ml_riesgo_renovacion(
         else {}
     )
     top_riesgo = (
-        act.sort_values("puntaje_riesgo_heuristico", ascending=False)
-        .head(limit)[
-            [
-                "id_empresa",
-                "kam_id",
-                "nivel_membresia",
-                "fecha_fin_vigencia",
-                "puntaje_riesgo_heuristico",
-                "probabilidad_churn_ml",
-                "semaforo_riesgo_renovacion",
+        _df_records_clean(
+            act.sort_values("puntaje_riesgo_heuristico", ascending=False).head(limit)[
+                [
+                    "id_empresa",
+                    "kam_id",
+                    "nivel_membresia",
+                    "fecha_fin_vigencia",
+                    "puntaje_riesgo_heuristico",
+                    "probabilidad_churn_ml",
+                    "semaforo_riesgo_renovacion",
+                ]
             ]
-        ]
-        .where(lambda d: pd.notna(d), None)
-        .to_dict(orient="records")
+        )
         if not act.empty
         else []
     )

@@ -1,16 +1,16 @@
 """Resultados versionados y auditables de Machine Learning en Gold."""
 
 from sqlalchemy import (
+    JSON,
     Column,
     DateTime,
     Float,
     Index,
     Integer,
-    JSON,
     String,
     UniqueConstraint,
+    text,
 )
-from sqlalchemy import text
 
 from app.database import Base
 
@@ -21,7 +21,10 @@ class GoldMlResultado(Base):  # type: ignore[misc,valid-type]
     __tablename__ = "gold_ml_resultados_empresa"
     __table_args__ = (
         UniqueConstraint(
-            "caso_uso", "id_empresa", "version_modelo", "fecha_corte",
+            "caso_uso",
+            "id_empresa",
+            "version_modelo",
+            "fecha_corte",
             name="uq_gold_ml_resultado_caso_empresa_version_corte",
         ),
         Index("ix_gold_ml_resultados_empresa", "id_empresa"),
@@ -43,11 +46,13 @@ class GoldMlResultado(Base):  # type: ignore[misc,valid-type]
     metricas = Column(JSON, nullable=False, default=dict)
     hash_dataset = Column(String(64), nullable=True)
     creado_en = Column(
-        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"),
+        DateTime(timezone=True),
+        server_default=text("CURRENT_TIMESTAMP"),
         nullable=False,
     )
     actualizado_en = Column(
-        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"),
+        DateTime(timezone=True),
+        server_default=text("CURRENT_TIMESTAMP"),
         onupdate=text("CURRENT_TIMESTAMP"),
         nullable=False,
     )

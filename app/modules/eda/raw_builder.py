@@ -1,5 +1,7 @@
 """Constructor de tablas normalizadas desde los 47 CSV crudos originales de ACTHO."""
 
+# pylint: disable=too-many-lines,too-many-locals,too-many-branches,too-many-statements
+
 from __future__ import annotations
 
 import logging
@@ -181,15 +183,28 @@ def _normalizar_segmento_membresia(tipo: str | None, cat: str | None) -> str | N
         return "Consultora / Vendor"
     if "universidad" in combinado:
         return "Universidad"
-    if "persona natural" in combinado or "personal" in combinado or "jovenes" in combinado or "jóvenes" in combinado:
+    if (
+        "persona natural" in combinado
+        or "personal" in combinado
+        or "jovenes" in combinado
+        or "jóvenes" in combinado
+    ):
         return "Personal / Independiente"
-    if "empresa" in combinado or "corporativ" in combinado or "estándar" in combinado or "premium" in combinado or "elite" in combinado:
+    if (
+        "empresa" in combinado
+        or "corporativ" in combinado
+        or "estándar" in combinado
+        or "premium" in combinado
+        or "elite" in combinado
+    ):
         return "Corporativa / Empresa"
     return tipo
 
 
-def _leer_matriz_general(raw_dir: Path) -> tuple[dict[tuple[str, int], int], dict[int, int], dict[str, int]]:
-    """Lee GENERAL (2).csv y retorna conteos (empresa, evento), por evento y por empresa."""
+def _leer_matriz_general(
+    raw_dir: Path,
+) -> tuple[dict[tuple[str, int], int], dict[int, int], dict[str, int]]:
+    """Lee GENERAL (2).csv y retorna conteos (empresa, evento), evento y empresa."""
     ruta = raw_dir / "Asistencia eventos" / "GENERAL (2).csv"
     por_emp_ev: dict[tuple[str, int], int] = {}
     por_ev: dict[int, int] = {}
@@ -214,7 +229,8 @@ def _leer_matriz_general(raw_dir: Path) -> tuple[dict[tuple[str, int], int], dic
             if 1 <= ev_num <= 60:
                 ev_cols[col_idx] = ev_num
 
-    for _, row in df_raw.iloc[header_idx + 1 :].iterrows():
+    start_row = header_idx + 1
+    for _, row in df_raw.iloc[start_row:].iterrows():
         emp_id = _clean_id(row.iloc[0])
         if not emp_id or not emp_id.startswith("EMP-"):
             continue
@@ -260,7 +276,9 @@ def _construir_eventos_y_asistencias(
         linea = _clean_text(row.iloc[4])
         detalle = _clean_text(row.iloc[5])
         modalidad = _clean_text(row.iloc[6])
-        es_presencial = bool(modalidad and modalidad.lower() in ("presencial", "híbrido", "hibrido"))
+        es_presencial = bool(
+            modalidad and modalidad.lower() in ("presencial", "híbrido", "hibrido")
+        )
 
         archivo_csv = f"{hoja}.csv"
         fpath = ev_dir / archivo_csv
@@ -278,7 +296,9 @@ def _construir_eventos_y_asistencias(
                     h_idx = pos
                     break
 
-            headers = [str(v).strip() if pd.notna(v) else "" for v in df_raw.iloc[h_idx].tolist()]
+            headers = [
+                str(v).strip() if pd.notna(v) else "" for v in df_raw.iloc[h_idx].tolist()
+            ]
             col_map: dict[str, int] = {}
             for idx_c, h in enumerate(headers):
                 hl = h.lower()
@@ -306,16 +326,25 @@ def _construir_eventos_y_asistencias(
             if "inscritos" not in col_map and len(headers) > 7 and headers[7] == "":
                 col_map["inscritos"] = 7
 
-            for raw_pos, r in df_raw.iloc[h_idx + 1 :].iterrows():
-                id_per = _clean_id(r.iloc[col_map["id_persona"]]) if "id_persona" in col_map else None
-                id_emp = _clean_id(r.iloc[col_map["id_empresa"]]) if "id_empresa" in col_map else None
+            start_ev_row = h_idx + 1
+            for raw_pos, r in df_raw.iloc[start_ev_row:].iterrows():
+                id_per = (
+                    _clean_id(r.iloc[col_map["id_persona"]])
+                    if "id_persona" in col_map
+                    else None
+                )
+                id_emp = (
+                    _clean_id(r.iloc[col_map["id_empresa"]])
+                    if "id_empresa" in col_map
+                    else None
+                )
                 if not id_per and not id_emp:
                     continue
                 if not id_per:
                     continue
 
                 llave = (id_emp, id_per)
-                fila_csv = int(raw_pos) + 1
+                fila_csv = int(str(raw_pos)) + 1
                 if llave in vistas_evento:
                     duplicados_rows.append(
                         {
@@ -329,7 +358,9 @@ def _construir_eventos_y_asistencias(
                             "id_persona": id_per,
                             "id_evento": id_ev,
                             "fecha_iso": fecha_ev,
-                            "regla_identificacion": "Misma persona y empresa en el mismo evento",
+                            "regla_identificacion": (
+                                "Misma persona y empresa en el mismo evento"
+                            ),
                             "detalle_primera_aparicion": f"Fila {vistas_evento[llave]}",
                             "detalle_duplicado": f"Fila {fila_csv}",
                         }
@@ -346,14 +377,38 @@ def _construir_eventos_y_asistencias(
                 else:
                     es_afil = bool(id_emp and id_emp in kam_por_empresa)
 
-                nivel_cargo = _clean_text(r.iloc[col_map["nivel_cargo"]]) if "nivel_cargo" in col_map else None
-                ciudad_ev = _clean_text(r.iloc[col_map["ciudad"]]) if "ciudad" in col_map else None
-                cant_ins = _parse_int(r.iloc[col_map["inscritos"]]) if "inscritos" in col_map else 1
+                nivel_cargo = (
+                    _clean_text(r.iloc[col_map["nivel_cargo"]])
+                    if "nivel_cargo" in col_map
+                    else None
+                )
+                ciudad_ev = (
+                    _clean_text(r.iloc[col_map["ciudad"]])
+                    if "ciudad" in col_map
+                    else None
+                )
+                cant_ins = (
+                    _parse_int(r.iloc[col_map["inscritos"]])
+                    if "inscritos" in col_map
+                    else 1
+                )
                 if not cant_ins or cant_ins <= 0:
                     cant_ins = 1
-                tiene_costo = normalizar_booleano(r.iloc[col_map["costo"]]) if "costo" in col_map else None
-                autoriza = normalizar_booleano(r.iloc[col_map["autoriza"]]) if "autoriza" in col_map else None
-                confirmado = normalizar_booleano(r.iloc[col_map["ubicacion"]]) if "ubicacion" in col_map else None
+                tiene_costo = (
+                    normalizar_booleano(r.iloc[col_map["costo"]])
+                    if "costo" in col_map
+                    else None
+                )
+                autoriza = (
+                    normalizar_booleano(r.iloc[col_map["autoriza"]])
+                    if "autoriza" in col_map
+                    else None
+                )
+                confirmado = (
+                    normalizar_booleano(r.iloc[col_map["ubicacion"]])
+                    if "ubicacion" in col_map
+                    else None
+                )
 
                 conteo_mat = matriz_emp_ev.get((id_emp, id_ev), 0) if id_emp else 0
                 asist_rows.append(
@@ -362,7 +417,11 @@ def _construir_eventos_y_asistencias(
                         "id_evento": id_ev,
                         "id_empresa": id_emp,
                         "id_persona": id_per,
-                        "kam_id": kam_por_empresa.get(id_emp, "Sin asignar") if id_emp else "Sin asignar",
+                        "kam_id": (
+                            kam_por_empresa.get(id_emp, "Sin asignar")
+                            if id_emp
+                            else "Sin asignar"
+                        ),
                         "fecha_evento": fecha_ev,
                         "periodo_mes_iso": periodo,
                         "nivel_cargo": nivel_cargo,
@@ -457,8 +516,16 @@ def _construir_encuestas(raw_dir: Path) -> pd.DataFrame:
                     "es_modalidad_presencial": es_pres,
                     "fecha_encuesta": fecha_enc,
                     "periodo_mes_iso": periodo,
-                    "fecha_hora_inicio": ts_ini.strftime("%Y-%m-%d %H:%M:%S") if ts_ini is not None else None,
-                    "fecha_hora_fin": ts_fin.strftime("%Y-%m-%d %H:%M:%S") if ts_fin is not None else None,
+                    "fecha_hora_inicio": (
+                        ts_ini.strftime("%Y-%m-%d %H:%M:%S")
+                        if ts_ini is not None
+                        else None
+                    ),
+                    "fecha_hora_fin": (
+                        ts_fin.strftime("%Y-%m-%d %H:%M:%S")
+                        if ts_fin is not None
+                        else None
+                    ),
                     "duracion_segundos": duracion,
                     "calif_locacion_o_plataforma": c_loc,
                     "calif_convocatoria_publicidad": c_conv,
@@ -665,12 +732,17 @@ def construir_normalizados_desde_raw(
     # 1. Leer Afiliados.csv y separar duplicados históricos (SCD2)
     df_af_raw = pd.read_csv(raw_dir / "Afiliados.csv", dtype=str)
     df_af_raw["_fila_csv"] = range(2, len(df_af_raw) + 2)
-    df_af_raw["_id_empresa"] = df_af_raw["Nombre de Empresa [anonimizado]"].apply(_clean_id)
+    df_af_raw["_id_empresa"] = df_af_raw["Nombre de Empresa [anonimizado]"].apply(
+        _clean_id
+    )
     df_af_raw = df_af_raw[df_af_raw["_id_empresa"].notna()].copy()
 
     # Ordenar para priorizar registros Activos / más recientes como registro principal
     df_af_raw["_score_activo"] = (
-        (df_af_raw["Estado de la Membresía"].fillna("").str.strip() == "Activo").astype(int) * 4
+        (df_af_raw["Estado de la Membresía"].fillna("").str.strip() == "Activo").astype(
+            int
+        )
+        * 4
         + (df_af_raw["Estado"].fillna("").str.strip() == "Activo").astype(int) * 2
         + df_af_raw["Fecha de Expiración Afiliación"].notna().astype(int)
     )
@@ -681,7 +753,8 @@ def construir_normalizados_desde_raw(
     )
 
     principales_list: list[pd.Series] = []
-    for emp_id, grp in df_af_sorted.groupby("_id_empresa", sort=False):
+    for emp_key, grp in df_af_sorted.groupby("_id_empresa", sort=False):
+        emp_id = str(emp_key)
         princ = grp.iloc[0]
         principales_list.append(princ)
         for _, dup in grp.iloc[1:].iterrows():
@@ -718,16 +791,28 @@ def construir_normalizados_desde_raw(
                     "id_duplicado": dup_id,
                     "fila_duplicada_csv": int(dup["_fila_csv"]),
                     "fila_principal_csv": int(princ["_fila_csv"]),
-                    "id_registro_principal": _clean_id(princ.get("ID de registro [anonimizado]")),
-                    "id_registro_duplicado": _clean_id(dup.get("ID de registro [anonimizado]")),
+                    "id_registro_principal": _clean_id(
+                        princ.get("ID de registro [anonimizado]")
+                    ),
+                    "id_registro_duplicado": _clean_id(
+                        dup.get("ID de registro [anonimizado]")
+                    ),
                     "id_empresa": emp_id,
                     "estado_principal": _clean_text(princ.get("Estado")),
                     "estado_duplicado": _clean_text(dup.get("Estado")),
-                    "estado_membresia_principal": _clean_text(princ.get("Estado de la Membresía")),
-                    "estado_membresia_duplicado": _clean_text(dup.get("Estado de la Membresía")),
-                    "tipo_membresia_principal": _clean_text(princ.get("Tipo de Membresía")),
+                    "estado_membresia_principal": _clean_text(
+                        princ.get("Estado de la Membresía")
+                    ),
+                    "estado_membresia_duplicado": _clean_text(
+                        dup.get("Estado de la Membresía")
+                    ),
+                    "tipo_membresia_principal": _clean_text(
+                        princ.get("Tipo de Membresía")
+                    ),
                     "tipo_membresia_duplicado": _clean_text(dup.get("Tipo de Membresía")),
-                    "categoria_principal": _clean_text(princ.get("Categoría de Membresía")),
+                    "categoria_principal": _clean_text(
+                        princ.get("Categoría de Membresía")
+                    ),
                     "categoria_duplicada": _clean_text(dup.get("Categoría de Membresía")),
                     "fecha_afiliacion_principal": f_afil_p,
                     "fecha_afiliacion_duplicada": f_afil_d,
@@ -747,11 +832,14 @@ def construir_normalizados_desde_raw(
         resp = _clean_text(r.get("Responsable"))
         if k_id and resp:
             kam_nombres[k_id] = resp
-        emp_id = _clean_id(r.get("Empresa"))
-        if emp_id:
-            kam_seguimiento_emp[emp_id] = {
+        ca_emp_id = _clean_id(r.get("Empresa"))
+        if ca_emp_id:
+            kam_seguimiento_emp[ca_emp_id] = {
                 "kam_id": k_id,
-                "asistio_segun_kam": (_clean_text(r.get("Estado_Asistencia")) or "").lower() == "asistió",
+                "asistio_segun_kam": (
+                    _clean_text(r.get("Estado_Asistencia")) or ""
+                ).lower()
+                == "asistió",
                 "eventos_reportados_kam": _parse_int(r.get("Eventos_Asistidos")) or 0,
             }
 
@@ -760,7 +848,9 @@ def construir_normalizados_desde_raw(
     nivel_por_empresa: dict[str, str | None] = {}
     for _, r in df_af_princ.iterrows():
         emp_id = str(r["_id_empresa"])
-        kam_por_empresa[emp_id] = _clean_kam_label(r.get("Propietario de Empresa [anonimizado]"))
+        kam_por_empresa[emp_id] = _clean_kam_label(
+            r.get("Propietario de Empresa [anonimizado]")
+        )
         nivel_por_empresa[emp_id] = _normalizar_nivel_membresia(
             _clean_text(r.get("Tipo de Membresía")),
             _clean_text(r.get("Categoría de Membresía")),
@@ -829,7 +919,9 @@ def construir_normalizados_desde_raw(
         ev_reales = int(asist_info.get("eventos_asistidos_reales", 0))
         part_reales = int(asist_info.get("participaciones_reales", 0))
         ev_mat = int(matriz_por_emp.get(emp_id, 0))
-        ciudad = _clean_text(r.get("Ciudad")) or _clean_text(r.get("Ciudad de facturación"))
+        ciudad = _clean_text(r.get("Ciudad")) or _clean_text(
+            r.get("Ciudad de facturación")
+        )
         region = _clean_text(r.get("Departamento")) or _clean_text(r.get("Región"))
         etiqueta = (_clean_text(r.get("Etiqueta")) or "").lower()
 
@@ -846,16 +938,22 @@ def construir_normalizados_desde_raw(
                 "tipo_membresia_original": tipo_orig,
                 "categoria_membresia_original": cat_orig,
                 "sector_economico": _clean_text(r.get("Sector Económico")),
-                "subsector_economico": _clean_text(r.get("Subsector Económico [anonimizado]"))
+                "subsector_economico": _clean_text(
+                    r.get("Subsector Económico [anonimizado]")
+                )
                 or subsector_extra.get(emp_id),
                 "tamano_empresa": _clean_text(r.get("Tamaño de la Empresa")),
                 "rango_empleados": _clean_text(r.get("Cantidad de Empleados")),
-                "porcentaje_mujeres_num": _parse_float(r.get("% de Mujeres en la Compañía")),
+                "porcentaje_mujeres_num": _parse_float(
+                    r.get("% de Mujeres en la Compañía")
+                ),
                 "ciudad": ciudad,
                 "region_departamento": region,
                 "pais": _clean_text(r.get("País de facturación")),
                 "fecha_afiliacion": _parse_fecha_es(r.get("Fecha de Afiliación")),
-                "fecha_expiracion": _parse_fecha_es(r.get("Fecha de Expiración Afiliación")),
+                "fecha_expiracion": _parse_fecha_es(
+                    r.get("Fecha de Expiración Afiliación")
+                ),
                 "fecha_miembro_desde": _parse_fecha_es(r.get("Miembro Desde el")),
                 "fecha_ultima_actividad": _parse_fecha_es(ult_act_raw),
                 "fecha_hora_ultima_actividad": ult_act_raw,
@@ -884,12 +982,20 @@ def construir_normalizados_desde_raw(
             }
         )
 
-    # Empresas que solo aparecen en asistencias, encuestas, movimientos, matriz o consolidado
+    # Empresas que solo aparecen en asistencias, encuestas, movimientos o matriz
     externas: set[str] = set()
     for serie in (
-        df_asistencias["id_empresa"] if not df_asistencias.empty else pd.Series(dtype=str),
+        (
+            df_asistencias["id_empresa"]
+            if not df_asistencias.empty
+            else pd.Series(dtype=str)
+        ),
         df_encuestas["id_empresa"] if not df_encuestas.empty else pd.Series(dtype=str),
-        df_movimientos["id_empresa"] if not df_movimientos.empty else pd.Series(dtype=str),
+        (
+            df_movimientos["id_empresa"]
+            if not df_movimientos.empty
+            else pd.Series(dtype=str)
+        ),
     ):
         for val in serie.dropna().unique():
             externas.add(str(val))
@@ -960,7 +1066,9 @@ def construir_normalizados_desde_raw(
             }
         )
 
-    df_empresas = pd.DataFrame(empresas_rows).sort_values("id_empresa").reset_index(drop=True)
+    df_empresas = (
+        pd.DataFrame(empresas_rows).sort_values("id_empresa").reset_index(drop=True)
+    )
 
     # 5. Construir dim_personas consolidando asistencias, encuestas y nuevos_afiliados
     personas_ids: set[str] = set()
@@ -973,9 +1081,18 @@ def construir_normalizados_desde_raw(
     asist_per_grp = (
         df_asistencias.groupby("id_persona")
         .agg(
-            id_empresa_asist=("id_empresa", lambda s: s.dropna().iloc[0] if len(s.dropna()) else None),
-            nivel_cargo=("nivel_cargo", lambda s: s.dropna().iloc[0] if len(s.dropna()) else None),
-            ciudad_asist=("ciudad_evento", lambda s: s.dropna().iloc[0] if len(s.dropna()) else None),
+            id_empresa_asist=(
+                "id_empresa",
+                lambda s: s.dropna().iloc[0] if len(s.dropna()) else None,
+            ),
+            nivel_cargo=(
+                "nivel_cargo",
+                lambda s: s.dropna().iloc[0] if len(s.dropna()) else None,
+            ),
+            ciudad_asist=(
+                "ciudad_evento",
+                lambda s: s.dropna().iloc[0] if len(s.dropna()) else None,
+            ),
             eventos_asistidos_2026=("id_evento", "nunique"),
             fecha_primer_evento_2026=("fecha_evento", "min"),
             fecha_ultimo_evento_2026=("fecha_evento", "max"),
@@ -988,10 +1105,22 @@ def construir_normalizados_desde_raw(
         df_encuestas[df_encuestas["id_persona"].notna()]
         .groupby("id_persona")
         .agg(
-            id_empresa_enc=("id_empresa", lambda s: s.dropna().iloc[0] if len(s.dropna()) else None),
-            ciudad_enc=("ciudad", lambda s: s.dropna().iloc[0] if len(s.dropna()) else None),
-            encuestas_presenciales=("es_modalidad_presencial", lambda s: int(s.astype(bool).sum())),
-            encuestas_virtuales=("es_modalidad_presencial", lambda s: int((~s.astype(bool)).sum())),
+            id_empresa_enc=(
+                "id_empresa",
+                lambda s: s.dropna().iloc[0] if len(s.dropna()) else None,
+            ),
+            ciudad_enc=(
+                "ciudad",
+                lambda s: s.dropna().iloc[0] if len(s.dropna()) else None,
+            ),
+            encuestas_presenciales=(
+                "es_modalidad_presencial",
+                lambda s: int(s.astype(bool).sum()),
+            ),
+            encuestas_virtuales=(
+                "es_modalidad_presencial",
+                lambda s: int((~s.astype(bool)).sum()),
+            ),
         )
         .to_dict(orient="index")
         if not df_encuestas.empty
@@ -1002,7 +1131,11 @@ def construir_normalizados_desde_raw(
     for pid in sorted(personas_ids):
         a_info = asist_per_grp.get(pid, {})
         e_info = enc_per_grp.get(pid, {})
-        emp_princ = a_info.get("id_empresa_asist") or e_info.get("id_empresa_enc") or nuevos_per_emp.get(pid)
+        emp_princ = (
+            a_info.get("id_empresa_asist")
+            or e_info.get("id_empresa_enc")
+            or nuevos_per_emp.get(pid)
+        )
         ev_cnt = int(a_info.get("eventos_asistidos_2026", 0))
         enc_p = int(e_info.get("encuestas_presenciales", 0))
         enc_v = int(e_info.get("encuestas_virtuales", 0))
@@ -1052,9 +1185,11 @@ def construir_normalizados_desde_raw(
         sub_emp = df_empresas[mask_emp]
         sub_mov = (
             df_movimientos[
-                df_movimientos["kam_id"].isin(sin_asig_vals)
-                if es_sin
-                else (df_movimientos["kam_id"] == k_id)
+                (
+                    df_movimientos["kam_id"].isin(sin_asig_vals)
+                    if es_sin
+                    else (df_movimientos["kam_id"] == k_id)
+                )
             ]
             if not df_movimientos.empty
             else pd.DataFrame()
@@ -1062,28 +1197,39 @@ def construir_normalizados_desde_raw(
         kams_rows.append(
             {
                 "kam_id": k_id,
-                "responsable_nombre": kam_nombres.get(k_id, "Sin asignar" if es_sin else k_id),
+                "responsable_nombre": kam_nombres.get(
+                    k_id, "Sin asignar" if es_sin else k_id
+                ),
                 "tiene_seguimiento_eventos": k_id in kam_nombres,
                 "total_registros_afiliados": int(sub_emp["en_crm_afiliados"].sum()),
                 "afiliados_activos": int(sub_emp["es_membresia_activa"].sum()),
                 "cuentas_elite_premium": int(
                     sub_emp["nivel_membresia"].isin(["Elite", "Premium"]).sum()
                 ),
-                "empresas_seguimiento_asistencia": int(sub_emp["en_seguimiento_kam"].sum()),
+                "empresas_seguimiento_asistencia": int(
+                    sub_emp["en_seguimiento_kam"].sum()
+                ),
                 "empresas_que_asistieron": int(sub_emp["asistio_segun_kam"].sum()),
-                "tratos_en_estado": int(
-                    (sub_mov["tipo_movimiento"] == "Trato en Estado").sum()
-                )
-                if not sub_mov.empty
-                else 0,
-                "nuevas_afiliaciones_ult_2m": int(
-                    (sub_mov["tipo_movimiento"] == "Nueva Afiliación (Últ. 2 Meses)").sum()
-                )
-                if not sub_mov.empty
-                else 0,
-                "renovaciones_ult_2m": int(sub_mov["es_renovacion"].astype(bool).sum())
-                if not sub_mov.empty
-                else 0,
+                "tratos_en_estado": (
+                    int((sub_mov["tipo_movimiento"] == "Trato en Estado").sum())
+                    if not sub_mov.empty
+                    else 0
+                ),
+                "nuevas_afiliaciones_ult_2m": (
+                    int(
+                        (
+                            sub_mov["tipo_movimiento"]
+                            == "Nueva Afiliación (Últ. 2 Meses)"
+                        ).sum()
+                    )
+                    if not sub_mov.empty
+                    else 0
+                ),
+                "renovaciones_ult_2m": (
+                    int(sub_mov["es_renovacion"].astype(bool).sum())
+                    if not sub_mov.empty
+                    else 0
+                ),
             }
         )
     df_kams = pd.DataFrame(kams_rows)

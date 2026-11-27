@@ -1,7 +1,7 @@
 """Modelos Pydantic centralizados para las variables de entorno utilizadas por Python."""
 
-from enum import Enum
 import os
+from enum import Enum
 from pathlib import Path
 
 from pydantic import BaseModel, Field, field_validator
@@ -15,6 +15,7 @@ class IngestionSource(str, Enum):
 
     ZOHO_CRM = "zoho_crm"
     """Fuente incremental de módulos del CRM Zoho."""
+
 
 DEFAULT_DRIVE_SCOPES = "https://www.googleapis.com/auth/drive.readonly"
 DEFAULT_WEEKLY_CRON = "0 6 * * 1"
@@ -114,7 +115,7 @@ class DatabaseEnvs(BaseModel):
     database_url: str | None = Field(
         default_factory=lambda: os.getenv("DATABASE_URL") or None
     )
-    """URL completa SQLAlchemy opcional; sobreescribe los campos POSTGRES_* (DATABASE_URL)."""
+    """URL completa SQLAlchemy opcional que sobreescribe POSTGRES_* (DATABASE_URL)."""
 
     def build_url(self) -> str:
         """Construye la URL SQLAlchemy de conexión a PostgreSQL.
@@ -151,14 +152,14 @@ class OrchestrationEnvs(BaseModel):
         default_factory=lambda: os.getenv("EDA_SCHEDULE_CRON", DEFAULT_WEEKLY_CRON),
         validate_default=True,
     )
-    """Expresión cron de 5 campos para el scheduler semanal/periódico (EDA_SCHEDULE_CRON)."""
+    """Expresión cron de 5 campos para el scheduler periódico (EDA_SCHEDULE_CRON)."""
 
     schedule_timezone: str = Field(
         default_factory=lambda: os.getenv(
             "EDA_SCHEDULE_TIMEZONE", DEFAULT_TIMEZONE
         ).strip()
     )
-    """Zona horaria IANA usada por Prefect para evaluar el cron (EDA_SCHEDULE_TIMEZONE)."""
+    """Zona horaria IANA usada por Prefect para el cron (EDA_SCHEDULE_TIMEZONE)."""
 
     deployment_name: str = Field(
         default_factory=lambda: os.getenv(
@@ -175,12 +176,7 @@ class OrchestrationEnvs(BaseModel):
     cleanup_raw_after_load: bool = Field(
         default_factory=lambda: _parse_bool_env("EDA_CLEANUP_RAW_AFTER_LOAD", True)
     )
-    """Elimina temporales raw_drive/raw_zoho tras carga (EDA_CLEANUP_RAW_AFTER_LOAD)."""
-
-    cleanup_raw_after_load: bool = Field(
-        default_factory=lambda: _parse_bool_env("EDA_CLEANUP_RAW_AFTER_LOAD", True)
-    )
-    """Elimina archivos temporales en raw_drive y raw_zoho tras carga exitosa (EDA_CLEANUP_RAW_AFTER_LOAD)."""
+    """Elimina temporales raw_drive y raw_zoho tras carga (EDA_CLEANUP_RAW_AFTER_LOAD)."""
 
     @field_validator("schedule_cron")
     @classmethod
@@ -214,7 +210,7 @@ class GoogleDriveEnvs(BaseModel):
             "GDRIVE_SOURCE_NAME", IngestionSource.GOOGLE_DRIVE.value
         ).strip()
     )
-    """Identificador único de la fuente en audit_ingestion_watermarks (GDRIVE_SOURCE_NAME)."""
+    """Identificador único en audit_ingestion_watermarks (GDRIVE_SOURCE_NAME)."""
 
     enabled: bool = Field(
         default_factory=lambda: _parse_bool_env("GDRIVE_ENABLED", False)
@@ -224,7 +220,7 @@ class GoogleDriveEnvs(BaseModel):
     folder_id: str = Field(
         default_factory=lambda: os.getenv("GDRIVE_FOLDER_ID", "").strip()
     )
-    """ID de la carpeta raíz en Google Drive donde residen los Excel/CSV (GDRIVE_FOLDER_ID)."""
+    """ID de la carpeta raíz en Google Drive con los Excel/CSV (GDRIVE_FOLDER_ID)."""
 
     credentials_file: Path | None = Field(
         default_factory=lambda: (
@@ -243,7 +239,7 @@ class GoogleDriveEnvs(BaseModel):
     export_excel_sheets_to_csv: bool = Field(
         default_factory=lambda: _parse_bool_env("GDRIVE_EXPORT_XLSX_TO_CSV", True)
     )
-    """Exporta cada hoja de archivos .xlsx/.xls a .csv tras descargarlos (GDRIVE_EXPORT_XLSX_TO_CSV)."""
+    """Exporta cada hoja de archivos .xlsx/.xls a .csv (GDRIVE_EXPORT_XLSX_TO_CSV)."""
 
     drive_scopes: list[str] = Field(
         default_factory=lambda: _parse_csv_list_env("DRIVE_SCOPES", DEFAULT_DRIVE_SCOPES),
@@ -280,11 +276,9 @@ class ZohoEnvs(BaseModel):
             "ZOHO_SOURCE_NAME", IngestionSource.ZOHO_CRM.value
         ).strip()
     )
-    """Identificador único de la fuente en audit_ingestion_watermarks (ZOHO_SOURCE_NAME)."""
+    """Identificador único en audit_ingestion_watermarks (ZOHO_SOURCE_NAME)."""
 
-    enabled: bool = Field(
-        default_factory=lambda: _parse_bool_env("ZOHO_ENABLED", False)
-    )
+    enabled: bool = Field(default_factory=lambda: _parse_bool_env("ZOHO_ENABLED", False))
     """Habilita o deshabilita la extracción incremental desde Zoho CRM (ZOHO_ENABLED)."""
 
     client_id: str = Field(
@@ -300,14 +294,14 @@ class ZohoEnvs(BaseModel):
     refresh_token: str = Field(
         default_factory=lambda: os.getenv("ZOHO_REFRESH_TOKEN", "").strip()
     )
-    """Refresh Token OAuth2 persistente para renovar access tokens de Zoho (ZOHO_REFRESH_TOKEN)."""
+    """Refresh Token OAuth2 persistente para Zoho CRM (ZOHO_REFRESH_TOKEN)."""
 
     accounts_url: str = Field(
         default_factory=lambda: os.getenv(
             "ZOHO_ACCOUNTS_URL", "https://accounts.zoho.com"
         ).rstrip("/")
     )
-    """URL base del servidor de autenticación OAuth2 de Zoho según región (ZOHO_ACCOUNTS_URL)."""
+    """URL base del servidor OAuth2 de Zoho según región (ZOHO_ACCOUNTS_URL)."""
 
     api_base_url: str = Field(
         default_factory=lambda: os.getenv(
@@ -331,7 +325,7 @@ class ZohoEnvs(BaseModel):
     timeout_seconds: float = Field(
         default_factory=lambda: float(os.getenv("ZOHO_TIMEOUT_SECONDS", "30.0"))
     )
-    """Tiempo máximo de espera en segundos por petición HTTP a Zoho (ZOHO_TIMEOUT_SECONDS)."""
+    """Tiempo máximo de espera en segundos por petición a Zoho (ZOHO_TIMEOUT_SECONDS)."""
 
 
 class ProjectEnvs(BaseModel):

@@ -243,9 +243,7 @@ def calcular_kpis_tipo_evento(
                     "porcentaje_leads": (
                         round(leads / tot_asist * 100.0, 1) if tot_asist > 0 else 0.0
                     ),
-                    "promedio_asistentes_evento": round(
-                        tot_asist / max(len(sub), 1), 1
-                    ),
+                    "promedio_asistentes_evento": round(tot_asist / max(len(sub), 1), 1),
                     "penetracion_promedio_activos_pct": round(
                         float(sub["tasa_penetracion_afiliados_pct"].mean()), 2
                     ),
@@ -326,7 +324,7 @@ def consultar_segmentos_comunicaciones(
         aptos = int(sub["apto_envio_comunicaciones"].eq(True).sum())
         resumen.append(
             {
-                "orden": int(orden),
+                "orden": int(str(orden)),
                 "segmento_codigo": str(cod),
                 "segmento_nombre": str(nom),
                 "total_registros": int(len(sub)),
@@ -345,11 +343,11 @@ def consultar_segmentos_comunicaciones(
         sub_det = sub_det[sub_det["apto_envio_comunicaciones"].eq(True)]
 
     total_filtrado = int(len(sub_det))
-    items = (
-        sub_det.head(limit)
-        .where(pd.notna(sub_det.head(limit)), None)
-        .to_dict(orient="records")
-    )
+    head_df = sub_det.head(limit)
+    items = [
+        {str(k): (None if pd.isna(v) else v) for k, v in row.items()}
+        for row in head_df.to_dict(orient="records")
+    ]
     return {
         "resumen_segmentos": resumen,
         "total_filtrado": total_filtrado,

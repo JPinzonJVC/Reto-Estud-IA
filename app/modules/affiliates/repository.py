@@ -56,9 +56,7 @@ class AffiliatesRepository:
                     GoldDimEmpresa360.total_eventos_anio > 0,
                 ).count()
             )
-            con_part = int(
-                q_emp.filter(GoldDimEmpresa360.total_eventos_anio > 0).count()
-            )
+            con_part = int(q_emp.filter(GoldDimEmpresa360.total_eventos_anio > 0).count())
             total_asist = int(
                 self.session.query(
                     func.sum(GoldDimEmpresa360.total_asistencias_anio)
@@ -71,9 +69,7 @@ class AffiliatesRepository:
                 ).scalar()
                 or 0
             )
-            tasa_serv = (
-                round((activas_serv / activas) * 100.0, 2) if activas > 0 else 0.0
-            )
+            tasa_serv = round((activas_serv / activas) * 100.0, 2) if activas > 0 else 0.0
             return {
                 "total_empresas": total_emp,
                 "empresas_en_crm": en_crm,
@@ -122,9 +118,7 @@ class AffiliatesRepository:
                 if ruta_evo.exists()
                 else 0
             )
-            tasa_serv = (
-                round((activas_serv / activas) * 100.0, 2) if activas > 0 else 0.0
-            )
+            tasa_serv = round((activas_serv / activas) * 100.0, 2) if activas > 0 else 0.0
             return {
                 "total_empresas": total_emp,
                 "empresas_en_crm": total_emp - prospectos,
@@ -135,9 +129,7 @@ class AffiliatesRepository:
                 "empresas_con_participacion": int(
                     (df_emp["total_eventos_anio"] > 0).sum()
                 ),
-                "total_asistencias_eventos": int(
-                    df_emp["total_asistencias_anio"].sum()
-                ),
+                "total_asistencias_eventos": int(df_emp["total_asistencias_anio"].sum()),
                 "renovaciones_registradas_2026": renov,
                 "fuente_datos": "gold_parquet",
             }
@@ -201,9 +193,9 @@ class AffiliatesRepository:
         ruta_360 = cfg.gold_dir / "dim_empresa_360.parquet"
         if ruta_360.exists():
             df_emp = pd.read_parquet(ruta_360)
-            df_top = df_emp.sort_values(
-                "total_asistencias_anio", ascending=False
-            ).head(limit)
+            df_top = df_emp.sort_values("total_asistencias_anio", ascending=False).head(
+                limit
+            )
             salida: list[dict[str, Any]] = []
             for _, r in df_top.iterrows():
                 salida.append(

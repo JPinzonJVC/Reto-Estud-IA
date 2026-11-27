@@ -1,9 +1,9 @@
 """Extractor desacoplado de archivos Excel/CSV desde Google Drive."""
 
-from collections import deque
 import hashlib
 import io
 import logging
+from collections import deque
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -34,6 +34,7 @@ def _build_drive_service(credentials_file: Path, scopes: list[str]) -> Any:
         ImportError: Si faltan las librerías de Google API en el entorno.
 
     """
+    # pylint: disable=import-outside-toplevel
     from google.oauth2 import service_account  # type: ignore[import-untyped]
     from googleapiclient.discovery import build  # type: ignore[import-untyped]
 
@@ -73,7 +74,7 @@ class GoogleDriveExtractor:
         """Inicializa el extractor con la configuración de Google Drive.
 
         Args:
-            config: Configuración opcional; si es None, se carga desde variables de entorno.
+            config: Configuración opcional; si es None, se carga desde entorno.
 
         Returns:
             None.
@@ -164,7 +165,10 @@ class GoogleDriveExtractor:
             Exception: Si falla la descarga por fragmentos desde Google Drive.
 
         """
-        from googleapiclient.http import MediaIoBaseDownload  # type: ignore[import-untyped]
+        # pylint: disable=import-outside-toplevel
+        from googleapiclient.http import (
+            MediaIoBaseDownload,  # type: ignore[import-untyped]
+        )
 
         request = service.files().get_media(fileId=file_id, supportsAllDrives=True)
         buffer = io.BytesIO()
@@ -174,7 +178,7 @@ class GoogleDriveExtractor:
             _, done = downloader.next_chunk()
         return buffer.getvalue()
 
-    def extract(
+    def extract(  # pylint: disable=too-many-locals
         self,
         *,
         last_cursor: str | None = None,
@@ -205,7 +209,9 @@ class GoogleDriveExtractor:
             )
 
         if not self.config.folder_id:
-            raise ValueError("GDRIVE_FOLDER_ID es obligatorio cuando GDRIVE_ENABLED=true.")
+            raise ValueError(
+                "GDRIVE_FOLDER_ID es obligatorio cuando GDRIVE_ENABLED=true."
+            )
 
         service = drive_service
         if service is None:
@@ -226,7 +232,9 @@ class GoogleDriveExtractor:
         fingerprint = _compute_folder_fingerprint(files)
 
         if not force and last_cursor and fingerprint == last_cursor:
-            logger.info("Google Drive sin cambios detectados (cursor=%s).", fingerprint[:12])
+            logger.info(
+                "Google Drive sin cambios detectados (cursor=%s).", fingerprint[:12]
+            )
             return ExtractionResult(
                 source_name=self.config.source_name,
                 enabled=True,
@@ -253,7 +261,10 @@ class GoogleDriveExtractor:
             if lower_name.endswith(".csv"):
                 df = pd.read_csv(io.BytesIO(raw_bytes), header=None, dtype=str)
                 total_rows += int(len(df.dropna(how="all")))
-            elif lower_name.endswith((".xlsx", ".xls")) and self.config.export_excel_sheets_to_csv:
+            elif (
+                lower_name.endswith((".xlsx", ".xls"))
+                and self.config.export_excel_sheets_to_csv
+            ):
                 sheets = pd.read_excel(
                     io.BytesIO(raw_bytes),
                     sheet_name=None,

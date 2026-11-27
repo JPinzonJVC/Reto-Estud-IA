@@ -34,14 +34,10 @@ def main() -> None:
             first_total = session.query(GoldMlResultado).count()
             second = generate_descriptive_results(session)
             second_total = session.query(GoldMlResultado).count()
-            distinct_runs = (
-                session.query(GoldMlResultado.id_ejecucion).distinct().count()
-            )
+            distinct_runs = session.query(GoldMlResultado.id_ejecucion).distinct().count()
         if first_total != second_total or distinct_runs != 1:
             raise AssertionError("Repetir el mismo corte duplicó filas Gold ML.")
-        if not any(
-            count for key, count in first.items() if key != "id_ejecucion"
-        ):
+        if not any(count for key, count in first.items() if key != "id_ejecucion"):
             raise AssertionError(
                 "No se generaron resultados desde las fuentes PostgreSQL."
             )

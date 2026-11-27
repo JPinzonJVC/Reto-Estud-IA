@@ -2,8 +2,8 @@
 
 from unittest.mock import patch
 
-from fastapi import HTTPException
 import pytest
+from fastapi import HTTPException
 
 from app.modules.machine_learning.router import get_ml_overview, get_ml_results
 

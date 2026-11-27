@@ -177,9 +177,7 @@ class RetentionRepository:
                             "nivel_membresia": f.nivel_membresia,
                             "sector_economico": f.sector_economico,
                             "nombre_ciudad": f.nombre_ciudad,
-                            "estado_membresia_detalle": str(
-                                f.estado_membresia_detalle
-                            ),
+                            "estado_membresia_detalle": str(f.estado_membresia_detalle),
                             "fecha_fin_vigencia": f.fecha_fin_vigencia,
                             "dias_para_expiracion": f.dias_para_expiracion,
                             "tramo_vencimiento": str(f.tramo_vencimiento),
@@ -222,9 +220,7 @@ class RetentionRepository:
             ]
             df_top = (
                 df_emp[cols]
-                .sort_values(
-                    "probabilidad_churn_ml", ascending=False, na_position="last"
-                )
+                .sort_values("probabilidad_churn_ml", ascending=False, na_position="last")
                 .head(limit)
             )
             return [

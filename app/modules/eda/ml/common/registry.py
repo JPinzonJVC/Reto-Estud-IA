@@ -1,10 +1,10 @@
 """Registro local versionado de artefactos y ejecuciones de inferencia aprobadas."""
 
-from datetime import date, datetime, timezone
 import hashlib
 import os
-from pathlib import Path
 import re
+from datetime import date, datetime, timezone
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -51,9 +51,7 @@ class PredictionExecution(BaseModel):
     model_name: str
     model_version: str
     artifact_sha256: str
-    prediction_date: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
+    prediction_date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     input_rows: int = Field(ge=0)
     output_rows: int = Field(ge=0)
     rejected_rows: int = Field(ge=0)
@@ -184,9 +182,7 @@ def store_prediction_execution(
     path = runs_dir / f"{execution.execution_id}.json"
     temporary = runs_dir / f".{execution.execution_id}.{uuid4().hex}.tmp"
     try:
-        temporary.write_text(
-            execution.model_dump_json(indent=2), encoding="utf-8"
-        )
+        temporary.write_text(execution.model_dump_json(indent=2), encoding="utf-8")
         os.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
@@ -194,8 +190,10 @@ def store_prediction_execution(
 
 
 def artifacts_root_from_environment() -> Path:
-    """Exige una ubicación externa explícita para no guardar modelos en Git."""
+    """Devuelve la ruta de artefactos ML configurada o el directorio local por defecto."""
     configured = os.environ.get("ACTHO_ML_ARTIFACTS_DIR")
-    if not configured:
-        raise RuntimeError("Configura `ACTHO_ML_ARTIFACTS_DIR` fuera del repositorio.")
-    return Path(configured).expanduser().resolve()
+    if configured:
+        return Path(configured).expanduser().resolve()
+    default_root = Path(__file__).resolve().parents[5] / "input" / "ml_artifacts"
+    default_root.mkdir(parents=True, exist_ok=True)
+    return default_root.resolve()
