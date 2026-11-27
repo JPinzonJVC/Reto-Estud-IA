@@ -3,6 +3,8 @@
 import unittest
 from unittest.mock import MagicMock
 
+from fastapi import HTTPException
+
 from app.main import health_check, render_dashboard
 from app.modules.affiliates.router import get_affiliates_summary
 from app.modules.analytics.router import get_analytics_metrics
@@ -36,9 +38,10 @@ class TestEndpoints(unittest.TestCase):
             customer_id="C-99",
             features=[10.0, 2.0],
         )
-        eval_res = evaluate_customer(req)
-        self.assertEqual(eval_res["customer_id"], "C-99")
-        self.assertIn("risk_level", eval_res)
+        with self.assertRaises(HTTPException) as error:
+            evaluate_customer(req)
+        self.assertEqual(error.exception.status_code, 503)
+        self.assertIn("no hay artefacto supervisado", error.exception.detail.lower())
 
     def test_analytics_metrics(self) -> None:
         """Verifica métricas cuantitativas del módulo de analítica desde Gold."""

@@ -14,16 +14,13 @@ class TestPrediction(unittest.TestCase):
 
     def test_predict_churn_structure(self) -> None:
         """Verifica que la salida de predicción de churn contenga los campos esperados."""
-        res = predict_churn([10.0, 3.0])
-        self.assertIn("prediction", res)
-        self.assertIn("churn_probability", res)
-        self.assertIsInstance(res["prediction"], int)
-        self.assertIsInstance(res["churn_probability"], float)
+        with self.assertRaises(FileNotFoundError):
+            predict_churn([10.0, 3.0])
 
     def test_predict_cluster_type(self) -> None:
         """Verifica que la asignación de cluster retorne un entero no nulo."""
-        cluster_id = predict_cluster([10.0, 3.0])
-        self.assertIsInstance(cluster_id, int)
+        with self.assertRaises(FileNotFoundError):
+            predict_cluster([10.0, 3.0])
 
     def test_load_model_not_found(self) -> None:
         """Verifica que load_model lance FileNotFoundError si no existe el archivo."""

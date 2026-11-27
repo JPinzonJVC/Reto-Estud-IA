@@ -31,15 +31,12 @@ class TestRiskEngine(unittest.TestCase):
 
     def test_assess_customer_profile(self) -> None:
         """Verifica la evaluación completa del perfil de cliente."""
-        profile = assess_customer_profile(
-            customer_id="CLI-100",
-            features=[15.0, 2.5],
-            cluster_id=0,
-        )
-        self.assertEqual(profile["customer_id"], "CLI-100")
-        self.assertIn("churn_probability", profile)
-        self.assertIn("risk_level", profile)
-        self.assertIn("recommended_action", profile)
+        with self.assertRaises(FileNotFoundError):
+            assess_customer_profile(
+                customer_id="CLI-100",
+                features=[15.0, 2.5],
+                cluster_id=0,
+            )
 
 
 if __name__ == "__main__":

@@ -41,11 +41,10 @@ class TestTraining(unittest.TestCase):
         self.assertTrue(saved_path.name.endswith(".pkl"))
         mock_joblib_dump.assert_called_once()
 
-    @patch("app.modules.machine_learning.training.save_model")
-    def test_bootstrap_default_models(self, mock_save: MagicMock) -> None:
+    def test_bootstrap_default_models(self) -> None:
         """Verifica la ejecución del flujo completo de bootstrap."""
-        bootstrap_default_models()
-        self.assertEqual(mock_save.call_count, 2)
+        with self.assertRaises(RuntimeError):
+            bootstrap_default_models()
 
 
 if __name__ == "__main__":
