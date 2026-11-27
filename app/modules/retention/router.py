@@ -1,9 +1,12 @@
 """Enrutador de API y vistas para el módulo de retención."""
 
+import csv
+import io
 from datetime import date
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
@@ -78,19 +81,96 @@ def evaluate_customer(payload: CustomerEvaluationRequest) -> dict[str, Any]:
 
 @retention_router.get("/silver/segments")
 def get_silver_segments(
-    fecha_referencia: date = Query(default_factory=date.today),
+    fecha_referencia: date = Query(default=date(2026, 11, 13)),
     limit: int = Query(default=100, ge=1, le=1000),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    """Retorna segmentos de acción temprana disponibles desde Silver.
+    """Retorna segmentos de acción temprana disponibles en el DWH."""
+    return DashboardSilverRepository(db).obtener_segmentos(fecha_referencia, limit)
+
+
+@retention_router.get("/silver/engagement-risk")
+def get_silver_engagement_risk(
+    kam_id: str | None = None,
+    nivel_membresia: str | None = None,
+    sector: str | None = None,
+    pais: str | None = None,
+    limit: int = Query(default=500, ge=1, le=2000),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Retorna conteos y listas Silver de sin participación y monocontacto.
 
     Args:
-        fecha_referencia: Fecha base para determinar vencimientos próximos.
-        limit: Máximo de registros por segmento.
+        kam_id: Identificador opcional de la ejecutiva KAM.
+        nivel_membresia: Nivel de membresía opcional.
+        sector: Sector económico opcional.
+        pais: País de la empresa opcional.
+        limit: Máximo de registros por lista.
         db: Sesión PostgreSQL inyectada mediante ``Depends(get_db)``.
 
     Returns:
-        Segmentos de vencimientos, inactividad y asistentes no afiliados.
+        Resumen y listas de afiliados activos sin participación y monocontacto.
 
     """
-    return DashboardSilverRepository(db).obtener_segmentos(fecha_referencia, limit)
+    return DashboardSilverRepository(db).obtener_riesgo_participacion_silver(
+        kam_id=kam_id,
+        nivel_membresia=nivel_membresia,
+        sector=sector,
+        pais=pais,
+        limit=limit,
+    )
+
+
+@retention_router.get("/silver/export/{segmento}")
+def export_silver_segment_csv(
+    segmento: str,
+    kam_id: str | None = None,
+    nivel_membresia: str | None = None,
+    sector: str | None = None,
+    pais: str | None = None,
+    fecha_referencia: date = Query(default=date(2026, 11, 13)),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """Exporta en CSV una lista accionable de retención desde el DWH."""
+    repo = DashboardSilverRepository(db)
+    if segmento in ("sin_participacion", "monocontacto"):
+        data = repo.obtener_riesgo_participacion_silver(
+            kam_id=kam_id,
+            nivel_membresia=nivel_membresia,
+            sector=sector,
+            pais=pais,
+            limit=2000,
+        )
+        rows = (
+            data["lista_sin_participacion"]
+            if segmento == "sin_participacion"
+            else data["lista_monocontacto"]
+        )
+    elif segmento == "vencimientos_90d":
+        seg = repo.obtener_segmentos(fecha_referencia, limit=2000)
+        rows = seg["vencimientos_proximos"]
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Segmento inválido. Usa sin_participacion, "
+                "monocontacto o vencimientos_90d."
+            ),
+        )
+
+    buffer = io.StringIO()
+    if rows:
+        writer = csv.DictWriter(buffer, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+    else:
+        buffer.write("sin_registros\n")
+
+    content = ("\ufeff" + buffer.getvalue()).encode("utf-8")
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="actho_silver_{segmento}.csv"'
+        },
+    )

@@ -33,6 +33,7 @@ try:
     PREFECT_AVAILABLE = True
 except ImportError:  # pragma: no cover - fallback para entornos sin prefect instalado
     PREFECT_AVAILABLE = False
+    NO_CACHE: Any = None
 
     def flow(*_args: Any, **_kwargs: Any) -> Callable[[_F], _F]:
         """Decorador fallback cuando prefect no está instalado.
@@ -212,7 +213,7 @@ def extract_zoho_crm_task(
 
 
 def _sincronizar_insumos_normalizados(files_written: list[Path]) -> list[Path]:
-    """Copia los CSV extraídos de Drive hacia input/normalizados cuando coinciden con Bronze.
+    """Copia los CSV extraídos de Drive hacia input/normalizados para Bronze.
 
     Args:
         files_written: Lista de rutas generadas por el extractor de Google Drive.
@@ -227,7 +228,7 @@ def _sincronizar_insumos_normalizados(files_written: list[Path]) -> list[Path]:
     cfg = cargar_configuracion()
     cfg.asegurar_directorios()
     requeridos = set(ARCHIVOS_REQUERIDOS_ORIGEN)
-    duplicados_nombres = {"registros_duplicados", "duplicados_afiliados_crm"}
+    duplicados_nombres = {"duplicados_afiliados_crm"}
     sincronizados: list[Path] = []
 
     for path in files_written:
@@ -354,7 +355,7 @@ def serve_eda_pipeline() -> None:
     """
     if not PREFECT_AVAILABLE:
         raise ImportError(
-            "Prefect no está instalado. Instala las dependencias con 'pip install -r requirements.txt'."
+            "Prefect no está instalado. Ejecuta 'pip install -r requirements.txt'."
         )
 
     settings = OrchestrationEnvs()

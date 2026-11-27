@@ -20,8 +20,143 @@ REEMPLAZOS_MOJIBAKE: tuple[tuple[str, str], ...] = (
     ("Ã\x93", "Ó"),
     ("Ã\x9a", "Ú"),
     ("Ã\x91", "Ñ"),
+    ("ﾃｼ", "ü"),
+    ("ﾃ｡", "á"),
+    ("ﾃｩ", "é"),
+    ("ﾃｭ", "í"),
+    ("ﾃｳ", "ó"),
+    ("ﾃｺ", "ú"),
+    ("ﾃｱ", "ñ"),
     ("\xa0", " "),
 )
+
+CIUDADES_CANONICAS: dict[str, str] = {
+    "bogota": "Bogotá",
+    "bogota dc": "Bogotá",
+    "bogota d c": "Bogotá",
+    "bogota bogota": "Bogotá",
+    "bigota": "Bogotá",
+    "bogots": "Bogotá",
+    "medellin": "Medellín",
+    "medellib": "Medellín",
+    "medelon": "Medellín",
+    "mediellin": "Medellín",
+    "mede": "Medellín",
+    "itagui": "Itagüí",
+    "barranquilla": "Barranquilla",
+    "barranquila": "Barranquilla",
+    "barra": "Barranquilla",
+    "cajica": "Cajicá",
+    "chia": "Chía",
+    "sopo": "Sopó",
+    "gachancipa": "Gachancipá",
+    "monteria": "Montería",
+    "jamundi": "Jamundí",
+    "guacari": "Guacarí",
+    "riofrio": "Riofrío",
+    "tulua": "Tuluá",
+    "ibague": "Ibagué",
+    "popayan": "Popayán",
+    "facatativa": "Facatativá",
+    "fusagasuga": "Fusagasugá",
+    "apartado": "Apartadó",
+    "cali": "Cali",
+    "cartagena": "Cartagena",
+    "bucaramanga": "Bucaramanga",
+    "envigado": "Envigado",
+    "funza": "Funza",
+    "cota": "Cota",
+    "neiva": "Neiva",
+    "pereira": "Pereira",
+    "santa marta": "Santa Marta",
+    "la estrella": "La Estrella",
+    "floridablanca giron": "Floridablanca",
+    "amdes": "Andes",
+    "madrid espana": "Madrid (España)",
+}
+
+DEPARTAMENTOS_COLOMBIA: dict[str, str] = {
+    "antioquia": "Antioquia",
+    "quindio": "Quindío",
+    "cundinamarca": "Cundinamarca",
+    "valle del cauca": "Valle del Cauca",
+    "atlantico": "Atlántico",
+    "bolivar": "Bolívar",
+    "santander": "Santander",
+    "norte de santander": "Norte de Santander",
+    "boyaca": "Boyacá",
+    "tolima": "Tolima",
+    "huila": "Huila",
+    "risaralda": "Risaralda",
+    "caldas": "Caldas",
+    "meta": "Meta",
+    "cesar": "Cesar",
+    "cordoba": "Córdoba",
+    "magdalena": "Magdalena",
+    "narino": "Nariño",
+    "cauca": "Cauca",
+    "sucre": "Sucre",
+    "casanare": "Casanare",
+    "caqueta": "Caquetá",
+    "choco": "Chocó",
+    "la guajira": "La Guajira",
+    "arauca": "Arauca",
+    "putumayo": "Putumayo",
+    "amazonas": "Amazonas",
+    "guaviare": "Guaviare",
+    "guainia": "Guainía",
+    "vaupes": "Vaupés",
+    "vichada": "Vichada",
+    "san andres": "San Andrés",
+}
+
+PAISES_NO_CIUDAD: frozenset[str] = frozenset(
+    {
+        "colombia",
+        "mexico",
+        "espana",
+        "peru",
+        "chile",
+        "argentina",
+        "ecuador",
+        "panama",
+        "venezuela",
+        "guatemala",
+        "estados unidos",
+        "usa",
+    }
+)
+
+CIUDADES_INVALIDAS: frozenset[str] = frozenset({"ciudad", "huy", "sin dato", "na", "n a"})
+
+PAISES_CANONICOS: dict[str, str] = {
+    "colombia": "Colombia",
+    "colomba": "Colombia",
+    "guatemala": "Guatemala",
+    "mexico": "México",
+    "espana": "España",
+    "peru": "Perú",
+    "chile": "Chile",
+    "argentina": "Argentina",
+    "ecuador": "Ecuador",
+    "panama": "Panamá",
+    "venezuela": "Venezuela",
+    "estados unidos": "Estados Unidos",
+    "usa": "Estados Unidos",
+}
+
+SECTORES_CANONICOS: dict[str, str] = {
+    "asociacones gremiales": "Asociaciones Gremiales",
+    "asociaciones gremiales": "Asociaciones Gremiales",
+    "tecnologia": "Tecnología",
+    "entidades sin animo de lucro": "Entidades Sin Ánimo de Lucro",
+    "farmaceutico y quimicos": "Farmacéutico y Químicos",
+    "cajas de compensacion": "Cajas de Compensación",
+    "consultoria especializada en rrhh": "Consultoría Especializada en RRHH",
+    "medios y comunicaciones": "Medios y Comunicaciones",
+}
+
+PREPOSICIONES_ES: frozenset[str] = frozenset({"de", "del", "la", "las", "los", "y"})
 
 VALORES_VERDADEROS: frozenset[str] = frozenset(
     {
@@ -153,19 +288,134 @@ def normalizar_fecha_iso(valor: Any) -> str | None:
     return str(ts.strftime("%Y-%m-%d"))
 
 
+def _clave_canonica(texto: str) -> str:
+    """Genera una clave ASCII en minúsculas sin tildes ni puntuación."""
+    sin_tildes = "".join(
+        c for c in unicodedata.normalize("NFKD", texto) if not unicodedata.combining(c)
+    )
+    return re.sub(r"[^a-z0-9]+", " ", sin_tildes.lower()).strip()
+
+
+def _title_case_es(texto: str) -> str:
+    """Aplica capitalización legible preservando preposiciones en español."""
+    palabras = texto.split()
+    resultado: list[str] = []
+    for idx, palabra in enumerate(palabras):
+        low = palabra.lower()
+        if idx > 0 and low in PREPOSICIONES_ES:
+            resultado.append(low)
+        else:
+            resultado.append(palabra[:1].upper() + palabra[1:].lower())
+    return " ".join(resultado)
+
+
+def extraer_departamento_si_aplica(valor: Any) -> str | None:
+    """Retorna el nombre canónico del departamento si el texto corresponde a uno.
+
+    Args:
+        valor: Valor textual reportado en un campo geográfico.
+
+    Returns:
+        Nombre canónico del departamento colombiano o None si no es departamento.
+
+    """
+    texto = limpiar_texto_y_mojibake(valor)
+    if texto is None:
+        return None
+    clave = _clave_canonica(texto)
+    return DEPARTAMENTOS_COLOMBIA.get(clave)
+
+
+def normalizar_ciudad(valor: Any) -> str | None:
+    """Homologa variantes ortográficas, mayúsculas y tildes de nombres de ciudades.
+
+    Excluye departamentos colombianos, nombres de países y placeholders inválidos
+    para que la columna ciudad contenga exclusivamente municipios/ciudades.
+
+    Args:
+        valor: Nombre de ciudad proveniente de CRM, asistencias o encuestas.
+
+    Returns:
+        Nombre canónico de la ciudad o None si es nulo, departamento, país o inválido.
+
+    """
+    texto = limpiar_texto_y_mojibake(valor)
+    if texto is None:
+        return None
+    clave = _clave_canonica(texto)
+    if (
+        not clave
+        or clave in CIUDADES_INVALIDAS
+        or clave in DEPARTAMENTOS_COLOMBIA
+        or clave in PAISES_NO_CIUDAD
+    ):
+        return None
+    if clave in CIUDADES_CANONICAS:
+        return CIUDADES_CANONICAS[clave]
+    if texto.isupper() or texto.islower():
+        return _title_case_es(texto)
+    return texto
+
+
+def normalizar_pais(valor: Any) -> str | None:
+    """Homologa variantes ortográficas y de mayúsculas en nombres de países.
+
+    Args:
+        valor: Nombre de país proveniente del CRM.
+
+    Returns:
+        Nombre canónico del país o None si es nulo.
+
+    """
+    texto = limpiar_texto_y_mojibake(valor)
+    if texto is None:
+        return None
+    clave = _clave_canonica(texto)
+    if clave in PAISES_CANONICOS:
+        return PAISES_CANONICOS[clave]
+    if texto.isupper() or texto.islower():
+        return _title_case_es(texto)
+    return texto
+
+
+def normalizar_sector(valor: Any) -> str | None:
+    """Homologa variantes ortográficas y de tildes en sectores económicos.
+
+    Args:
+        valor: Nombre de sector económico proveniente del CRM.
+
+    Returns:
+        Nombre canónico del sector económico o None si es nulo.
+
+    """
+    texto = limpiar_texto_y_mojibake(valor)
+    if texto is None:
+        return None
+    clave = _clave_canonica(texto)
+    if clave in SECTORES_CANONICOS:
+        return SECTORES_CANONICOS[clave]
+    return texto
+
+
 def normalizar_dataframe_silver(
     df: pd.DataFrame,
     cols_texto: tuple[str, ...] = (),
     cols_bool: tuple[str, ...] = (),
     cols_fecha: tuple[str, ...] = (),
+    cols_ciudad: tuple[str, ...] = (),
+    cols_sector: tuple[str, ...] = (),
+    cols_pais: tuple[str, ...] = (),
 ) -> pd.DataFrame:
-    """Aplica reglas de normalización Silver sobre columnas de texto, bool y fecha.
+    """Aplica reglas de normalización Silver sobre columnas de texto, bool, fecha y catálogos.
 
     Args:
         df: DataFrame de entrada proveniente de Bronze.
         cols_texto: Columnas de texto a limpiar de mojibake y espacios.
         cols_bool: Columnas booleanas a estandarizar.
         cols_fecha: Columnas de fecha a estandarizar en formato ISO YYYY-MM-DD.
+        cols_ciudad: Columnas geográficas de ciudad a homologar.
+        cols_sector: Columnas de sector económico a homologar.
+        cols_pais: Columnas de país a homologar.
 
     Returns:
         Copia del DataFrame con las columnas normalizadas.
@@ -175,6 +425,15 @@ def normalizar_dataframe_silver(
     for col in cols_texto:
         if col in resultado.columns:
             resultado[col] = resultado[col].apply(limpiar_texto_y_mojibake)
+    for col in cols_ciudad:
+        if col in resultado.columns:
+            resultado[col] = resultado[col].apply(normalizar_ciudad)
+    for col in cols_pais:
+        if col in resultado.columns:
+            resultado[col] = resultado[col].apply(normalizar_pais)
+    for col in cols_sector:
+        if col in resultado.columns:
+            resultado[col] = resultado[col].apply(normalizar_sector)
     for col in cols_bool:
         if col in resultado.columns:
             resultado[col] = resultado[col].apply(normalizar_booleano)
