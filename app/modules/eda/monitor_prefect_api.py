@@ -25,11 +25,13 @@ def _expandir_campo_cron(field: str, min_val: int, max_val: int) -> set[int]:
     for raw_part in field.split(","):
         part = raw_part.strip()
         if not part:
-            continue
+            raise ValueError("Empty cron field")
         step = 1
         if "/" in part:
             base, step_str = part.split("/", 1)
-            step = max(1, int(step_str))
+            step = int(step_str)
+            if step < 1:
+                raise ValueError("Cron interval must be positive")
         else:
             base = part
         if base == "*":
@@ -40,8 +42,12 @@ def _expandir_campo_cron(field: str, min_val: int, max_val: int) -> set[int]:
         else:
             val = int(base)
             start, end = val, val
+        if start < min_val or end > max_val or start > end:
+            raise ValueError("Cron value out of range")
         for num in range(max(min_val, start), min(max_val, end) + 1, step):
             result.add(num)
+    if not result:
+        raise ValueError("Cron field has no values")
     return result
 
 
@@ -61,19 +67,23 @@ def calcular_proxima_ejecucion(cron_expr: str, tz_name: str) -> datetime | None:
         doms = _expandir_campo_cron(parts[2], 1, 31)
         months = _expandir_campo_cron(parts[3], 1, 12)
         dows_raw = _expandir_campo_cron(parts[4], 0, 7)
-        dows = {(d - 1) % 7 for d in dows_raw}
-    except ValueError:
+        dows = {6 if d in (0, 7) else d - 1 for d in dows_raw}
+    except (ValueError, IndexError):
         return None
 
     now = datetime.now(tz).replace(second=0, microsecond=0) + timedelta(minutes=1)
     cursor = now
     for _ in range(370 * 24):
-        if (
-            cursor.month in months
-            and cursor.day in doms
-            and cursor.weekday() in dows
-            and cursor.hour in hours
-        ):
+        dom_wildcard = parts[2] == "*"
+        dow_wildcard = parts[4] == "*"
+        day_matches = (
+            cursor.day in doms
+            if dow_wildcard
+            else cursor.weekday() in dows
+            if dom_wildcard
+            else cursor.day in doms or cursor.weekday() in dows
+        )
+        if cursor.month in months and day_matches and cursor.hour in hours:
             for minute in sorted(minutes):
                 candidate = cursor.replace(minute=minute)
                 if candidate >= now:
@@ -152,7 +162,9 @@ def _post_json(url: str, payload: dict[str, Any], timeout: float = 1.5) -> Any:
         return json.loads(raw) if raw else None
 
 
-def consultar_prefect_live(api_url: str) -> dict[str, Any]:
+def consultar_prefect_live(
+    api_url: str, deployment_name: str | None = None
+) -> dict[str, Any]:
     """Consulta la API de Prefect Server (flow runs, task runs y deployment activo)."""
     candidatos = [api_url.rstrip("/")]
     if "localhost:4200" in candidatos[0] or "127.0.0.1:4200" in candidatos[0]:
@@ -169,12 +181,16 @@ def consultar_prefect_live(api_url: str) -> dict[str, Any]:
         try:
             runs = _post_json(f"{base}/flow_runs/filter", filtro_runs, timeout=1.2)
             runs_list = runs if isinstance(runs, list) else []
+            dep_id, sched_id, active_cron, active_tz = _leer_deployment_activo(
+                base, deployment_name
+            )
             active_run = next(
                 (
                     r
                     for r in runs_list
                     if str(r.get("state_type", "")).upper()
-                    in {"RUNNING", "COMPLETED", "FAILED"}
+                    in {"RUNNING", "COMPLETED", "FAILED", "CRASHED", "CANCELLED"}
+                    and (not dep_id or r.get("deployment_id") == dep_id)
                 ),
                 None,
             )
@@ -194,7 +210,6 @@ def consultar_prefect_live(api_url: str) -> dict[str, Any]:
                 except Exception:
                     task_runs = []
 
-            dep_id, sched_id, active_cron, active_tz = _leer_deployment_activo(base)
             return {
                 "connected": True,
                 "api_url": base,
@@ -223,11 +238,14 @@ def consultar_prefect_live(api_url: str) -> dict[str, Any]:
 
 
 def _leer_deployment_activo(
-    base_url: str,
+    base_url: str, deployment_name: str | None = None,
 ) -> tuple[str | None, str | None, str | None, str | None]:
     """Obtiene id de deployment, schedule, cron y zona horaria desde Prefect."""
     try:
-        deps = _post_json(f"{base_url}/deployments/filter", {"limit": 10}, timeout=1.2)
+        payload: dict[str, Any] = {"limit": 100}
+        if deployment_name:
+            payload["deployments"] = {"name": {"any_": [deployment_name]}}
+        deps = _post_json(f"{base_url}/deployments/filter", payload, timeout=1.2)
         if isinstance(deps, list) and deps:
             dep = deps[0]
             dep_id = dep.get("id")
@@ -255,7 +273,11 @@ def actualizar_cron_prefect(
     if next_dt is None:
         raise ValueError(f"Expresión cron inválida: '{cleaned}'.")
 
-    live = consultar_prefect_live(orch.prefect_api_url)
+    try:
+        ZoneInfo(tz_name)
+    except Exception as exc:
+        raise ValueError(f"Zona horaria IANA inválida: '{tz_name}'.") from exc
+    live = consultar_prefect_live(orch.prefect_api_url, orch.deployment_name)
     if not live["connected"] or not live["deployment_id"]:
         raise RuntimeError(
             "No fue posible conectar con Prefect Server o no existe deployment activo."
@@ -301,7 +323,7 @@ def actualizar_cron_prefect(
 def disparar_corrida_prefect(force_reprocess: bool = True) -> dict[str, Any]:
     """Crea un flow_run inmediato sobre el deployment activo en Prefect Server."""
     orch = OrchestrationEnvs()
-    live = consultar_prefect_live(orch.prefect_api_url)
+    live = consultar_prefect_live(orch.prefect_api_url, orch.deployment_name)
     if not live["connected"] or not live["deployment_id"]:
         raise RuntimeError(
             "Prefect Server no tiene un deployment activo registrado todavía."

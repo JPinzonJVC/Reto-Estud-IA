@@ -267,7 +267,9 @@ class EtlMonitorService:
         orch = OrchestrationEnvs()
         drive_cfg = GoogleDriveEnvs()
         zoho_cfg = ZohoEnvs()
-        prefect_live = consultar_prefect_live(orch.prefect_api_url)
+        prefect_live = consultar_prefect_live(
+            orch.prefect_api_url, orch.deployment_name
+        )
         eff_cron = str(prefect_live.get("active_cron") or orch.schedule_cron)
         eff_tz = str(prefect_live.get("active_timezone") or orch.schedule_timezone)
         try:
@@ -316,6 +318,9 @@ class EtlMonitorService:
                 "prefect_live_runs": len(prefect_live["flow_runs"]),
                 "prefect_latest_run_name": p_run.get("name") if p_run else None,
                 "prefect_latest_state": p_state or None,
+                "prefect_latest_run_id": p_run.get("id") if p_run else None,
+                "prefect_latest_run_start": p_run.get("start_time") if p_run else None,
+                "prefect_latest_run_end": p_run.get("end_time") if p_run else None,
                 "prefect_latest_message": (
                     str((p_run.get("state") or {}).get("message") or "")
                     if p_run and isinstance(p_run.get("state"), dict)
@@ -530,7 +535,7 @@ class EtlMonitorService:
         )
         if p_state == "RUNNING":
             return "RUNNING", min(95, max(15, int(round((done_t / 4) * 100))))
-        if p_newer and p_state == "FAILED":
+        if p_newer and p_state in {"FAILED", "CRASHED", "CANCELLED"}:
             return "FAILED", min(90, max(10, int(round((done_t / 4) * 100))))
         if ejec_act and ejec_act.get("estado_ejecucion") == "EXITOSO":
             return "COMPLETED", prog_pct

@@ -144,7 +144,7 @@ def trigger_etl_from_monitor(
     """Dispara inmediatamente el flujo en Prefect Server o en segundo plano local."""
     try:
         return disparar_corrida_prefect(force_reprocess=True)
-    except Exception:
+    except RuntimeError:
         accepted = etl_service.iniciar_ejecucion(
             EtlRunRequest(persistir_en_db=True), background_tasks
         )
@@ -153,3 +153,8 @@ def trigger_etl_from_monitor(
             "run_id": accepted.run_id,
             "state": accepted.estado_inicial,
         }
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Prefect no pudo iniciar el flujo: {exc}",
+        ) from exc
