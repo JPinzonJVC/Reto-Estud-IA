@@ -120,7 +120,7 @@ def ingerir_y_validar_bronze(
     run_id: str | None = None,
     ts_ingesta: str | None = None,
 ) -> tuple[dict[str, pd.DataFrame], pd.DataFrame]:
-    """Valida existencia e integridad de fuentes y registra hashes SHA-256 en Bronze.
+    """Valida existencia e integridad de las 7 fuentes y registra SHA-256 en Bronze.
 
     Args:
         cfg: Configuración del pipeline ETL Medallion.
@@ -136,6 +136,10 @@ def ingerir_y_validar_bronze(
 
     """
     cfg.asegurar_directorios()
+    legado_dup = cfg.bronze_dir / "registros_duplicados.csv"
+    if legado_dup.exists():
+        legado_dup.unlink()
+
     id_ejec = run_id or f"ETL-ACTHO360-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     fecha_ingesta = ts_ingesta or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -143,11 +147,6 @@ def ingerir_y_validar_bronze(
         nombre: cfg.origen_normalizados_dir / f"{nombre}.csv"
         for nombre in ARCHIVOS_REQUERIDOS_ORIGEN
     }
-    ruta_dup_1 = cfg.origen_duplicados_dir / "registros_duplicados.csv"
-    ruta_dup_2 = cfg.origen_normalizados_dir / "registros_duplicados.csv"
-    mapa_origen["registros_duplicados"] = (
-        ruta_dup_1 if ruta_dup_1.exists() else ruta_dup_2
-    )
 
     bronze_dfs: dict[str, pd.DataFrame] = {}
     hashes_rows: list[dict[str, Any]] = []
@@ -245,7 +244,7 @@ def homologar_kam_id(valor: Any, cfg: ConfiguracionETL) -> str:
         cfg: Configuración del pipeline ETL Medallion.
 
     Returns:
-        Identificador KAM homologado.
+        Identificador KAM homologado (NOT NULL).
 
     """
     if pd.isna(valor):
@@ -253,4 +252,23 @@ def homologar_kam_id(valor: Any, cfg: ConfiguracionETL) -> str:
     texto = str(valor).strip()
     if texto in cfg.valores_origen_sin_asignar:
         return cfg.kam_sin_asignar_id
+    return texto
+
+
+def homologar_kam_opcional(valor: Any, cfg: ConfiguracionETL) -> str | None:
+    """Retorna el kam_id asignado real o None si el registro no tiene KAM asignado.
+
+    Args:
+        valor: Valor original del identificador KAM en la fuente.
+        cfg: Configuración del pipeline ETL Medallion.
+
+    Returns:
+        Identificador KAM asignado o None cuando está vacío o sin asignar.
+
+    """
+    if pd.isna(valor):
+        return None
+    texto = str(valor).strip()
+    if not texto or texto in cfg.valores_origen_sin_asignar:
+        return None
     return texto

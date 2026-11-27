@@ -4,7 +4,6 @@ import json
 from datetime import datetime
 from typing import Any
 
-import numpy as np
 import pandas as pd
 
 from app.modules.eda.bronze import guardar_tabla_medallion
@@ -198,86 +197,6 @@ def filtrar_registros_rechazados(
     return df_valido.reset_index(drop=True), rechazados_cnt
 
 
-def _clasificar_categoria_duplicado(tipo: Any) -> str:
-    """Clasifica el tipo de duplicado en una categoría estandarizada de auditoría.
-
-    Args:
-        tipo: Descripción original del tipo de duplicado.
-
-    Returns:
-        Categoría estandarizada de duplicidad.
-
-    """
-    texto = str(tipo).lower()
-    if "exacto" in texto:
-        return "DUPLICADO_EXACTO"
-    if "histórico" in texto or "múltiples registros" in texto:
-        return "DUPLICADO_NEGOCIO_HISTORICO_SCD2"
-    if "simultáneamente" in texto or "2 portafolios" in texto or "dos filas" in texto:
-        return "COINCIDENCIA_PARCIAL_ENTRE_FUENTES"
-    return "COINCIDENCIA_PARCIAL_DOBLE_INSCRIPCION_EVENTO"
-
-
-def _extraer_id_conservado(detalle: Any) -> str:
-    """Extrae el identificador del registro conservado desde el detalle textual.
-
-    Args:
-        detalle: Texto descriptivo de la primera aparición.
-
-    Returns:
-        Identificador del registro principal conservado.
-
-    """
-    texto = str(detalle)
-    for token in texto.replace("|", " ").replace(":", " ").split():
-        if token.startswith(("R-", "A-", "EP-", "EV-", "EMP-")):
-            return token.rstrip(",")
-    return "VER_DETALLE_PRIMERA_APARICION"
-
-
-def construir_audit_duplicados(
-    df_dup_orig: pd.DataFrame,
-    cfg: ConfiguracionETL,
-    bitacora: BitacoraAuditoria,
-) -> pd.DataFrame:
-    """Construye y persiste la tabla audit_registros_duplicados.
-
-    Args:
-        df_dup_orig: DataFrame de duplicados leído desde Bronze.
-        cfg: Configuración del pipeline ETL Medallion.
-        bitacora: Bitácora de auditoría activa.
-
-    Returns:
-        DataFrame de auditoría de duplicados clasificados.
-
-    """
-    t0 = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    df_audit_dup = df_dup_orig.copy()
-    df_audit_dup["categoria_duplicidad"] = df_audit_dup["tipo_duplicado"].apply(
-        _clasificar_categoria_duplicado
-    )
-    df_audit_dup["id_registro_conservado"] = df_audit_dup[
-        "detalle_primera_aparicion"
-    ].apply(_extraer_id_conservado)
-    df_audit_dup["fecha_deteccion"] = cfg.fecha_corte
-    df_audit_dup["estado_revision"] = "DOCUMENTADO_EN_AUDITORIA"
-    df_audit_dup["accion_aplicada"] = np.where(
-        df_audit_dup["categoria_duplicidad"] == "DUPLICADO_NEGOCIO_HISTORICO_SCD2",
-        "INCORPORADO_EN_DIM_EMPRESAS_SCD2",
-        "CONSERVADO_EN_TABLA_HECHOS_CON_TRAZABILIDAD",
-    )
-    guardar_tabla_medallion(df_audit_dup, cfg.audit_dir, "audit_registros_duplicados")
-    bitacora.registrar_carga(
-        "bronze/registros_duplicados -> audit/audit_registros_duplicados",
-        t0,
-        leidos=len(df_dup_orig),
-        proc=len(df_audit_dup),
-        ins=len(df_audit_dup),
-        act=0,
-    )
-    return df_audit_dup
-
-
 def _fila_reconciliacion(
     tabla: str,
     df_b: pd.DataFrame,
@@ -290,7 +209,7 @@ def _fila_reconciliacion(
     Args:
         tabla: Nombre de la tabla reconciliada.
         df_b: DataFrame en la capa Bronze.
-        df_s: DataFrame en la capa Silver/Audit.
+        df_s: DataFrame en la capa Silver.
         explicacion: Nota técnica de reconciliación.
         rechazados: Cantidad de filas rechazadas en Silver para esa tabla.
 
@@ -337,16 +256,14 @@ def _construir_df_rechazados(bitacora: BitacoraAuditoria) -> pd.DataFrame:
 def persistir_auditoria_final(
     bronze: dict[str, pd.DataFrame],
     silver: dict[str, pd.DataFrame],
-    df_audit_dup: pd.DataFrame,
     cfg: ConfiguracionETL,
     bitacora: BitacoraAuditoria,
 ) -> dict[str, pd.DataFrame]:
-    """Persiste las tablas de calidad, rechazados, reconciliación y cargas.
+    """Persiste las tablas de calidad, rechazados, reconciliación y cargas en Audit.
 
     Args:
         bronze: Diccionario de DataFrames de la capa Bronze.
         silver: Diccionario de DataFrames de la capa Silver.
-        df_audit_dup: DataFrame de auditoría de duplicados.
         cfg: Configuración del pipeline ETL Medallion.
         bitacora: Bitácora de auditoría con incidencias, rechazados y cargas.
 
@@ -354,6 +271,11 @@ def persistir_auditoria_final(
         Diccionario con los DataFrames de auditoría generados.
 
     """
+    for ext in ("csv", "parquet"):
+        legado_dup = cfg.audit_dir / f"audit_registros_duplicados.{ext}"
+        if legado_dup.exists():
+            legado_dup.unlink()
+
     df_audit_calidad = pd.DataFrame(bitacora.registros_calidad)
     guardar_tabla_medallion(df_audit_calidad, cfg.audit_dir, "audit_calidad_datos")
 
@@ -365,7 +287,8 @@ def persistir_auditoria_final(
         conteos = df_rechazados["tabla_destino"].value_counts().to_dict()
         rech_por_tabla = {str(k): int(v) for k, v in conteos.items()}
 
-    n_scd2 = len(silver["dim_empresas_scd2"])
+    n_mem = len(silver["membresias"])
+    n_br = len(silver["bridge_persona_empresa"])
     reconciliacion = pd.DataFrame(
         [
             _fila_reconciliacion(
@@ -380,55 +303,49 @@ def persistir_auditoria_final(
                 "dim_empresas",
                 bronze["dim_empresas"],
                 silver["dim_empresas"],
-                f"100% filas válidas conservadas; métricas movidas a Gold/Auditoría; "
-                f"historial en dim_empresas_scd2 ({n_scd2} filas)",
+                f"100% filas válidas conservadas; geografía en 3NF y {n_mem} ciclos "
+                f"reales desacoplados en silver_membresias",
                 rech_por_tabla.get("dim_empresas", 0),
             ),
             _fila_reconciliacion(
                 "dim_personas",
                 bronze["dim_personas"],
                 silver["dim_personas"],
-                "100% filas válidas conservadas; métricas movidas a "
-                "audit_metricas_origen_personas",
+                f"100% filas válidas conservadas; {n_br} relaciones N:N consolidadas "
+                f"en silver_bridge_persona_empresa",
                 rech_por_tabla.get("dim_personas", 0),
             ),
             _fila_reconciliacion(
                 "dim_eventos",
                 bronze["dim_eventos"],
                 silver["dim_eventos"],
-                "100% filas válidas conservadas; métricas de origen movidas a "
-                "audit_metricas_origen_eventos",
+                "100% filas válidas conservadas; eliminada fecha_evento redundante y "
+                "enlazada ciudad sede en presenciales",
                 rech_por_tabla.get("dim_eventos", 0),
             ),
             _fila_reconciliacion(
                 "fact_asistencias",
                 bronze["fact_asistencias"],
                 silver["fact_asistencias"],
-                "100% filas válidas conservadas; kam_id homologado a KAM-UNASSIGNED; "
-                "15 filas sin empresa clasificadas",
+                "100% filas válidas conservadas; enlazado id_vinculo y eliminadas "
+                "columnas derivadas redundantes",
                 rech_por_tabla.get("fact_asistencias", 0),
             ),
             _fila_reconciliacion(
                 "fact_encuestas_satisfaccion",
                 bronze["fact_encuestas_satisfaccion"],
                 silver["fact_encuestas_satisfaccion"],
-                "100% filas válidas conservadas; sin inferencia de eventos ni NPS",
+                "100% filas válidas conservadas; calificaciones Likert 1-5 puras y "
+                "NPS 0-10 entero nullable separado",
                 rech_por_tabla.get("fact_encuestas_satisfaccion", 0),
             ),
             _fila_reconciliacion(
                 "fact_movimientos_crm",
                 bronze["fact_movimientos_crm"],
                 silver["fact_movimientos_crm"],
-                "100% filas válidas conservadas; creada PK id_movimiento y "
-                "clasificados nulos de expiración",
+                "100% filas válidas conservadas; id_membresia opcional para tratos "
+                "comerciales en pipeline",
                 rech_por_tabla.get("fact_movimientos_crm", 0),
-            ),
-            _fila_reconciliacion(
-                "audit_registros_duplicados",
-                bronze["registros_duplicados"],
-                df_audit_dup,
-                "100% filas conservadas con trazabilidad y clasificación",
-                0,
             ),
         ]
     )
