@@ -1,5 +1,16 @@
 # =============================================================
-# Etapa 1: Builder (Compilación e instalación de dependencias ML)
+# Etapa 1: Compilación de la interfaz React
+# =============================================================
+FROM node:22-alpine AS frontend-builder
+
+WORKDIR /build
+COPY frontend/package.json frontend/package-lock.json ./frontend/
+RUN npm ci --prefix frontend
+COPY frontend ./frontend
+RUN npm --prefix frontend run build
+
+# =============================================================
+# Etapa 2: Builder (Compilación e instalación de dependencias ML)
 # =============================================================
 FROM python:3.10-slim AS builder
 
@@ -16,7 +27,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
 # =============================================================
-# Etapa 2: Runtime (Entorno de producción ligero y seguro)
+# Etapa 3: Runtime (Entorno de producción ligero y seguro)
 # =============================================================
 FROM python:3.10-slim AS runtime
 
@@ -35,6 +46,9 @@ COPY --from=builder --chown=appuser:appgroup /root/.local /home/appuser/.local
 
 # Copiar código fuente, templates, estáticos y módulos
 COPY --chown=appuser:appgroup . /app
+
+# Incorporar el bundle React generado sin incluir Node.js en el runtime.
+COPY --from=frontend-builder --chown=appuser:appgroup /build/app/static/react /app/app/static/react
 
 # Asegurar directorios de entrada de datos y logs con permisos adecuados
 RUN mkdir -p /app/input /app/logs && \
