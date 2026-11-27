@@ -1,7 +1,9 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { MlDashboard } from './pages/MlDashboard';
 import './styles.css';
+import './ml.css';
 
 const rootElement = document.getElementById('root');
 
@@ -14,3 +16,12 @@ createRoot(rootElement).render(
     <App />
   </React.StrictMode>,
 );
+
+const mlRoot = document.getElementById('ml-react-root');
+if (mlRoot) {
+  createRoot(mlRoot).render(
+    <React.StrictMode>
+      <MlDashboard />
+    </React.StrictMode>,
+  );
+}

@@ -11,7 +11,10 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
-    proxy: { '/etl': 'http://127.0.0.1:8000' },
+    proxy: {
+      '/etl': 'http://127.0.0.1:8000',
+      '/ml': 'http://127.0.0.1:8000',
+    },
   },
   build: {
     outDir: resolve(frontendDir, '../app/static/react'),

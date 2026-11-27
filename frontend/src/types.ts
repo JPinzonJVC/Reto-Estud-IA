@@ -98,3 +98,52 @@ export interface ScheduleResponse {
   next_run_iso: string;
   next_run_in: string;
 }
+
+export type MlCase =
+  | 'fidelidad_rfm_s'
+  | 'recomendacion_linea'
+  | 'churn_heuristico'
+  | 'lead_prioridad';
+
+export interface MlResult {
+  id_empresa: string;
+  id_ejecucion: string;
+  caso_uso: MlCase;
+  version: string;
+  fecha_corte: string;
+  estado: string;
+  metodo: string;
+  score: number | null;
+  segmento_o_linea: string | null;
+  soporte: number | null;
+  justificacion: Record<string, unknown>;
+  metricas: Record<string, unknown>;
+}
+
+export interface MlResultPage {
+  caso_uso: MlCase;
+  fecha_corte: string | null;
+  version: string | null;
+  id_ejecucion: string | null;
+  total: number;
+  limit: number;
+  offset: number;
+  items: MlResult[];
+}
+
+export interface MlOverviewCase {
+  caso_uso: MlCase;
+  fecha_corte: string | null;
+  version: string | null;
+  estado: string;
+  empresas_procesadas: number;
+  resultados_disponibles: number;
+  tipo_resultado: string;
+}
+
+export interface MlOverview {
+  fecha_corte: string | null;
+  resultados_totales: number;
+  modelos_aprobados_disponibles: number;
+  casos_uso: MlOverviewCase[];
+}

@@ -15,11 +15,6 @@ const endpoints = {
   audience: '/analytics/silver/audience',
   satisfaction: '/analytics/silver/satisfaction',
   dimensions: '/dashboard/satisfaction-topics',
-  mlStatus: '/ml/status',
-  mlFidelidad: '/ml/fidelidad',
-  mlPublico: '/ml/publico-eventos',
-  mlUso: '/ml/uso-permanencia',
-  mlRiesgo: '/ml/riesgo-renovacion',
 };
 
 const state = {
@@ -140,6 +135,9 @@ function setActiveTab(tabName) {
 
   if (isEtl) {
     window.dispatchEvent(new CustomEvent('etl:activate'));
+  }
+  if (tabName === 'ml') {
+    window.dispatchEvent(new CustomEvent('ml:activate'));
   }
 }
 
@@ -933,66 +931,6 @@ function renderSatisfaction(items) {
       .join('') || '<tr><td colspan="7">Sin encuestas para este periodo.</td></tr>';
 }
 
-/* 7. RESERVED MACHINE LEARNING WORKSPACE */
-function renderMlWorkspace(status, fidelidad, publico, uso, riesgo) {
-  const modelos = status.modelos || [];
-  const activos = modelos.filter((m) => m.estado === 'MODELO_ACTIVO').length;
-  byId('ml-global-badge').textContent =
-    activos > 0 ? `${activos}/4 Modelos activos` : '4/4 Espacios reservados listos';
-
-  byId('ml-slots-container').innerHTML = modelos
-    .map(
-      (m) => `<div class="ml-slot-card">
-        <h3>${escapeHtml(m.nombre_modelo)}</h3>
-        <p>${escapeHtml(m.algoritmo_recomendado)}</p>
-        <div class="ml-slot-meta">
-          <span class="ml-route-code">${escapeHtml(m.ruta_endpoint)}</span>
-          <span class="sem-pill ${m.estado === 'MODELO_ACTIVO' ? 'VERDE' : 'AMARILLO'}">${escapeHtml(m.estado)}</span>
-        </div>
-        <small style="color:var(--muted);font-size:10.5px">Destino Gold: <code>${escapeHtml(m.columna_gold_objetivo)}</code> (${m.registros_poblandose}/${m.total_universo_elegible})</small>
-      </div>`
-    )
-    .join('');
-
-  const curva = uso.curva_empirica_uso_vs_permanencia || [];
-  byId('ml-uso-chart').innerHTML = `<div class="bar-list">${curva
-    .map(
-      (c) =>
-        `<div class="bar-row"><span>${escapeHtml(c.tramo_uso)}</span><div class="track"><div class="fill teal" style="width:${c.tasa_permanencia_pct}%" data-tip="${escapeHtml(c.tramo_uso)}: ${c.permanecen_activas}/${c.empresas_crm} activas (${c.tasa_permanencia_pct}%)"></div></div><b>${c.tasa_permanencia_pct}%</b></div>`
-    )
-    .join('')}</div>`;
-
-  const leads = (publico.prospectos_alta_interaccion || []).slice(0, 6);
-  byId('ml-publico-view').innerHTML = `<div class="table-wrap bounded compact-table"><table><thead><tr><th>Prospecto</th><th>Sector</th><th>Asistencias</th><th>Línea histórica</th><th>Score ML</th></tr></thead><tbody>${
-    leads
-      .map(
-        (l) =>
-          `<tr><td>${escapeHtml(l.id_empresa)}</td><td>${escapeHtml(l.sector_economico || '—')}</td><td>${l.total_asistencias_anio}</td><td>${escapeHtml(l.linea_2027_mayor_participacion || '—')}</td><td>${l.score_conversion_lead_ml_0_100 ?? '<span class="sem-pill NO_APLICA">Reservado</span>'}</td></tr>`
-      )
-      .join('')
-  }</tbody></table></div>`;
-
-  const fidRows = (fidelidad.items || []).slice(0, 6);
-  byId('ml-fidelidad-view').innerHTML = `<div class="table-wrap bounded compact-table"><table><thead><tr><th>Empresa</th><th>KAM</th><th>Eventos</th><th>Personas</th><th>Score ML</th></tr></thead><tbody>${
-    fidRows
-      .map(
-        (f) =>
-          `<tr><td>${escapeHtml(f.id_empresa)}</td><td>${escapeHtml(f.kam_id)}</td><td>${f.total_eventos_anio}</td><td>${f.personas_distintas_anio}</td><td>${f.score_fidelidad_ml_0_100 ?? '<span class="sem-pill NO_APLICA">Reservado</span>'}</td></tr>`
-      )
-      .join('')
-  }</tbody></table></div>`;
-
-  const chRows = (riesgo.cuentas_prioritarias || []).slice(0, 6);
-  byId('ml-riesgo-view').innerHTML = `<div class="table-wrap bounded compact-table"><table><thead><tr><th>Empresa</th><th>Vencimiento</th><th>Pts. Heurístico</th><th>Prob. Churn ML</th><th>Semáforo</th></tr></thead><tbody>${
-    chRows
-      .map(
-        (r) =>
-          `<tr><td>${escapeHtml(r.id_empresa)}</td><td>${escapeHtml(r.fecha_fin_vigencia || '—')}</td><td>${r.puntaje_riesgo_heuristico ?? 0}</td><td>${r.probabilidad_churn_ml ?? '<span class="sem-pill NO_APLICA">Reservado</span>'}</td><td>${semPill(r.semaforo_riesgo_renovacion)}</td></tr>`
-      )
-      .join('')
-  }</tbody></table></div>`;
-}
-
 async function refreshCommSegmentsOnly() {
   const kam = byId('kam-filter').value;
   const data = await request(
@@ -1143,14 +1081,9 @@ async function refresh() {
 
 async function initialize() {
   try {
-    const [overview, flt, mlStatus, mlFid, mlPub, mlUso, mlRiesgo] = await Promise.all([
+    const [overview, flt] = await Promise.all([
       request(endpoints.overview),
       request(endpoints.filters),
-      request(endpoints.mlStatus),
-      request(endpoints.mlFidelidad),
-      request(endpoints.mlPublico),
-      request(endpoints.mlUso),
-      request(endpoints.mlRiesgo),
     ]);
 
     byId('data-date').textContent = `Corte ${overview.fecha_referencia}`;
@@ -1163,8 +1096,6 @@ async function initialize() {
     byId('source-caption').textContent = `DWH activo (${overview.fuente_datos}) · Silver 3NF + Gold Estrella.`;
 
     renderSemaphoreOverview(overview);
-    renderMlWorkspace(mlStatus, mlFid, mlPub, mlUso, mlRiesgo);
-
     appendOptions(byId('period-filter'), flt.periodos_asistencia, (value) =>
       new Intl.DateTimeFormat('es-CO', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
         new Date(`${value}-01T00:00:00Z`)
