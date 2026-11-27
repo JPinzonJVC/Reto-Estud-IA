@@ -1,0 +1,72 @@
+<section class="view-panel is-active" data-view="overview" role="tabpanel">
+        <div class="bento-grid">
+          <article class="panel span-7">
+            <div class="panel-head">
+              <div><p class="eyebrow">Dinámica temporal DWH</p><h2>Evolución mensual de membresías y asistencias</h2></div>
+              <div class="chart-toggle">
+                <button data-insight="memberships" class="is-active" type="button">Membresías</button>
+                <button data-insight="trend" type="button">Asistencias</button>
+                <button data-insight="nps" type="button">Satisfacción 1–5</button>
+              </div>
+            </div>
+            <p id="insight-description" class="chart-description"></p>
+            <div id="insight-view" class="chart-view" aria-live="polite"></div>
+          </article>
+
+          <article class="panel span-5">
+            <div class="panel-head">
+              <div><p class="eyebrow">Retención preventiva</p><h2>Semáforo de riesgo de renovación</h2></div>
+              <span id="semaphore-rate-tag" class="tag soft-violet">—</span>
+            </div>
+            <p class="chart-description">Evaluación multicriterio de vencimiento, inactividad trimestral, satisfacción y monocontacto.</p>
+            <div id="semaphore-overview" class="chart-view" aria-live="polite"></div>
+          </article>
+
+          <article class="panel span-6">
+            <div class="panel-head">
+              <div><p class="eyebrow">Vencimientos 30 / 60 / 90 días</p><h2>Curva de renovación</h2></div>
+              <div class="panel-actions">
+                <div class="chart-toggle">
+                  <button data-exp-view="global" class="is-active" type="button">Global</button>
+                  <button data-exp-view="kam" type="button">Por KAM</button>
+                </div>
+                <a id="export-expiring-btn" class="btn-csv" href="/dashboard/export/vencimientos_90d" download>CSV</a>
+              </div>
+            </div>
+            <p id="expirations-description" class="chart-description"></p>
+            <div id="expirations-view" class="chart-view" aria-live="polite"></div>
+          </article>
+
+          <article class="panel span-6">
+            <div class="panel-head">
+              <div><p class="eyebrow">Composición base activa</p><h2>Distribución de afiliados</h2></div>
+              <div class="chart-toggle">
+                <button data-dist-view="nivel" class="is-active" type="button">Nivel</button>
+                <button data-dist-view="sector" type="button">Sector</button>
+                <button data-dist-view="subsector" type="button">Subsector</button>
+                <button data-dist-view="tamano" type="button">Tamaño</button>
+                <button data-dist-view="empleados" type="button">Empleados</button>
+              </div>
+            </div>
+            <p id="distribution-description" class="chart-description"></p>
+            <div id="distribution-view" class="chart-view" aria-live="polite"></div>
+          </article>
+
+          <article class="panel span-7">
+            <div class="panel-head">
+              <div><p class="eyebrow">Gestión comercial</p><h2>Cartera y servicio por KAM</h2></div>
+              <span class="tag soft-violet">Top ejecutivas</span>
+            </div>
+            <div id="overview-kams-chart" class="chart-view" aria-live="polite"></div>
+          </article>
+
+          <article class="panel span-5">
+            <div class="panel-head">
+              <div><p class="eyebrow">Oferta comercial 2027</p><h2>Afiliados vs. Leads por línea</h2></div>
+              <span id="leads-ratio-tag" class="tag">—</span>
+            </div>
+            <p class="chart-description">Participación de afiliados (violeta) frente a prospectos no afiliados (naranja).</p>
+            <div id="overview-lines-view" class="chart-view" aria-live="polite"></div>
+          </article>
+        </div>
+      </section>

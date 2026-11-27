@@ -1,0 +1,81 @@
+<section class="view-panel" data-view="portfolio" role="tabpanel">
+        <div class="bento-grid">
+          <article class="panel span-12">
+            <div class="panel-head">
+              <div><p class="eyebrow">Inteligencia empresarial 360</p><h2>KPIs por sector, subsector, tamaño y rango de empleados</h2></div>
+              <div class="chart-toggle">
+                <button data-segdim="sector_economico" class="is-active" type="button">Sector</button>
+                <button data-segdim="subsector_economico" type="button">Subsector</button>
+                <button data-segdim="tamano_empresa" type="button">Tamaño empresa</button>
+                <button data-segdim="rango_empleados" type="button">Rango empleados</button>
+                <button data-segdim="nivel_membresia" type="button">Nivel</button>
+              </div>
+            </div>
+            <p id="segment-kpis-description" class="chart-description"></p>
+            <div id="segment-kpis-chart" class="chart-view"></div>
+            <div id="segment-kpis-table" class="chart-view"></div>
+          </article>
+
+          <article class="panel span-7" id="kams">
+            <div class="panel-head">
+              <div><p class="eyebrow">Gestión comercial</p><h2>Desempeño y semáforo por ejecutiva KAM</h2></div>
+              <div class="chart-toggle">
+                <button data-kam-view="chart" class="is-active" type="button">Cartera</button>
+                <button data-kam-view="semaphore" type="button">Semáforo</button>
+                <button data-kam-view="table" type="button">Tabla</button>
+              </div>
+            </div>
+            <div id="kams-view" class="chart-view" aria-live="polite"></div>
+          </article>
+
+          <article class="panel span-5" id="pillars">
+            <div class="panel-head">
+              <div><p class="eyebrow">Comunidad y diversidad</p><h2>Pilares estratégicos y equidad</h2></div>
+              <span id="women-share" class="tag">—</span>
+            </div>
+            <p id="pillars-description" class="chart-description"></p>
+            <div id="pillars-view" class="chart-view" aria-live="polite"></div>
+          </article>
+
+          <article class="panel span-12" id="comm-segments">
+            <div class="panel-head">
+              <div><p class="eyebrow">Activación comercial · Habeas Data</p><h2>Centro de los 8 segmentos accionables de comunicaciones</h2></div>
+              <div class="panel-actions">
+                <label class="check-pill">
+                  <input id="habeas-only-toggle" type="checkbox">
+                  <span>Solo autorizados Habeas Data</span>
+                </label>
+                <a id="export-comm-btn" class="btn-csv" href="/dashboard/export/AFILIADOS_SIN_PARTICIPACION" download>Exportar CSV</a>
+              </div>
+            </div>
+            <div id="comm-segment-pills" class="seg-pills"></div>
+            <p id="comm-segment-summary" class="chart-description"></p>
+            <div class="table-wrap bounded compact-table">
+              <table>
+                <thead>
+                  <tr><th>Empresa</th><th>Contacto</th><th>Rol</th><th>KAM</th><th>Nivel</th><th>Sector</th><th>Semáforo</th><th>Criterio</th><th>Habeas Data</th></tr>
+                </thead>
+                <tbody id="comm-segment-body"></tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="panel span-12" id="portfolio">
+            <div class="panel-head">
+              <div><p class="eyebrow">Cartera operativa 360</p><h2>Afiliados, semáforo y vencimientos</h2></div>
+              <div class="table-controls">
+                <input id="portfolio-search" type="search" placeholder="Buscar empresa, KAM o sector…" aria-label="Buscar en cartera">
+                <span id="portfolio-total" class="tag soft-violet">—</span>
+              </div>
+            </div>
+            <div class="table-wrap bounded">
+              <table>
+                <thead>
+                  <tr><th>Empresa</th><th>Ejecutiva</th><th>Semáforo</th><th>Nivel</th><th>Sector</th><th>Tamaño</th><th>Empleados</th><th>Ciudad</th><th>Eventos</th><th>Vencimiento</th></tr>
+                </thead>
+                <tbody id="portfolio-body"></tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+      </section>

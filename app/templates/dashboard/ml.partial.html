@@ -1,0 +1,46 @@
+<section class="view-panel" data-view="ml" role="tabpanel">
+        <div class="bento-grid">
+          <article class="panel span-12">
+            <div class="panel-head">
+              <div><p class="eyebrow">Arquitectura lista para rama ML</p><h2>Estado de los 4 espacios de Machine Learning</h2></div>
+              <span id="ml-global-badge" class="tag soft-violet">Espacio reservado</span>
+            </div>
+            <p id="ml-status-desc" class="chart-description">Las tablas Gold y rutas REST /ml/* ya exponen los vectores de entrada y columnas destino para conectar los artefactos entrenados en la rama de ML.</p>
+            <div id="ml-slots-container" class="ml-slot-grid" aria-live="polite"></div>
+          </article>
+
+          <article class="panel span-6">
+            <div class="panel-head">
+              <div><p class="eyebrow">Ruta /ml/uso-permanencia</p><h2>Relación uso de eventos vs. permanencia CRM</h2></div>
+              <span id="ml-uso-badge" class="tag">Evidencia base</span>
+            </div>
+            <p class="chart-description">Tasa empírica de permanencia activa según tramo de eventos asistidos en el año.</p>
+            <div id="ml-uso-chart" class="chart-view"></div>
+          </article>
+
+          <article class="panel span-6">
+            <div class="panel-head">
+              <div><p class="eyebrow">Ruta /ml/publico-eventos</p><h2>Público interesado y afinidad por línea 2027</h2></div>
+              <span id="ml-afinidad-badge" class="tag">Pre-scoring</span>
+            </div>
+            <p class="chart-description">Afinidad histórica observada y prospectos no afiliados con mayor recurrencia en eventos.</p>
+            <div id="ml-publico-view" class="chart-view"></div>
+          </article>
+
+          <article class="panel span-6">
+            <div class="panel-head">
+              <div><p class="eyebrow">Ruta /ml/fidelidad</p><h2>Detección y predicción de fidelidad</h2></div>
+              <span id="ml-fidelidad-badge" class="tag soft-violet">RFM-S</span>
+            </div>
+            <div id="ml-fidelidad-view" class="chart-view"></div>
+          </article>
+
+          <article class="panel span-6">
+            <div class="panel-head">
+              <div><p class="eyebrow">Ruta /ml/riesgo-renovacion</p><h2>Cola prioritaria para probabilidad de Churn</h2></div>
+              <span id="ml-churn-badge" class="tag">Semáforo híbrido</span>
+            </div>
+            <div id="ml-riesgo-view" class="chart-view"></div>
+          </article>
+        </div>
+      </section>

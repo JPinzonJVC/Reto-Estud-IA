@@ -1,0 +1,40 @@
+<section class="view-panel" data-view="participation" role="tabpanel">
+        <div class="bento-grid">
+          <article class="panel span-12">
+            <div class="panel-head">
+              <div><p class="eyebrow">Esquema Estrella Gold</p><h2>KPIs estratégicos por tipo de evento</h2></div>
+              <div class="chart-toggle">
+                <button data-evkpi-view="linea" class="is-active" type="button">Por Línea 2027</button>
+                <button data-evkpi-view="modalidad" type="button">Por Modalidad</button>
+              </div>
+            </div>
+            <p id="event-kpis-description" class="chart-description"></p>
+            <div id="event-kpis-view" class="chart-view" aria-live="polite"></div>
+          </article>
+
+          <article class="panel span-7" id="participation">
+            <div class="panel-head">
+              <div><p class="eyebrow">Participación granular</p><h2>Convocatoria por evento</h2></div>
+              <div class="chart-toggle">
+                <button data-chart="bars" class="is-active" type="button">Apiladas</button>
+                <button data-chart="donut" type="button">Torta</button>
+                <button data-chart="table" type="button">Tabla</button>
+              </div>
+            </div>
+            <div id="participation-view" class="chart-view" aria-live="polite"></div>
+          </article>
+
+          <article class="panel span-5" id="audience">
+            <div class="panel-head">
+              <div><p class="eyebrow">Audiencia</p><h2>Perfil jerárquico de asistentes</h2></div>
+              <div class="chart-toggle">
+                <button data-audience="roles" class="is-active" type="button">Cargos</button>
+                <button data-audience="lines" type="button">Líneas</button>
+                <button data-audience="modalities" type="button">Modalidad</button>
+              </div>
+            </div>
+            <p id="audience-description" class="chart-description"></p>
+            <div id="audience-view" class="chart-view" aria-live="polite"></div>
+          </article>
+        </div>
+      </section>
