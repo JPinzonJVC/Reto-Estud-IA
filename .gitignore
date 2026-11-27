@@ -70,6 +70,12 @@ dmypy.json
 .DS_Store
 Thumbs.db
 
+# Frontend React + Vite
+frontend/node_modules/
+frontend/dist/
+app/static/react/
+npm-debug.log*
+
 # Logs
 logs/*
 !logs/.gitkeep
