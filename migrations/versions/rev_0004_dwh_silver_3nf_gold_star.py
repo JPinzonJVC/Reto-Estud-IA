@@ -1,6 +1,6 @@
 """Migración 0004: Data Warehouse Silver 3NF (13 tablas) y Gold Estrella (6 tablas)."""
 
-# pylint: disable=invalid-name,import-outside-toplevel
+# pylint: disable=invalid-name,import-outside-toplevel,no-member
 
 from typing import Any
 

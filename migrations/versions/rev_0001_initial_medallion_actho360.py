@@ -1,6 +1,6 @@
 """Migración inicial 0001 del esquema Medallion (Silver, Gold y Audit) ACTHO 360."""
 
-# pylint: disable=invalid-name,import-outside-toplevel
+# pylint: disable=invalid-name,import-outside-toplevel,no-member
 
 from typing import Any
 

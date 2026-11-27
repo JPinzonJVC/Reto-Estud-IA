@@ -1,6 +1,6 @@
 """Migración 0003 para la tabla audit_ingestion_watermarks."""
 
-# pylint: disable=invalid-name
+# pylint: disable=invalid-name,no-member
 
 from alembic import op
 

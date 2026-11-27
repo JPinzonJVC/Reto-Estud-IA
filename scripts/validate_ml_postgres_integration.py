@@ -1,5 +1,7 @@
 """Valida persistencia/idempotencia real de ML dentro de una transacción reversible."""
 
+# pylint: disable=no-member
+
 from uuid import uuid4
 
 from alembic.migration import MigrationContext

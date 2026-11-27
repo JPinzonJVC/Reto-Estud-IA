@@ -1,5 +1,7 @@
 """Entorno de configuración de migraciones Alembic para ACTHO 360."""
 
+# pylint: disable=no-member
+
 from typing import Any
 
 from sqlalchemy import engine_from_config, pool

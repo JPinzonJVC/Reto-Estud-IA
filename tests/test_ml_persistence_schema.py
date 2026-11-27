@@ -1,5 +1,7 @@
 """Pruebas de contratos de la persistencia Gold de ML."""
 
+# pylint: disable=no-member
+
 from datetime import date
 from importlib import import_module
 from io import StringIO

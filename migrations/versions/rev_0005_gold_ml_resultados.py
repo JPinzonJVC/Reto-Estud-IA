@@ -1,6 +1,6 @@
 """Resultados experimentales/auditables para los casos ML ACTHO."""
 
-# pylint: disable=invalid-name
+# pylint: disable=invalid-name,no-member
 
 import sqlalchemy as sa
 from alembic import op

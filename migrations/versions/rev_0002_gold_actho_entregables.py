@@ -1,6 +1,6 @@
 """Migración histórica 0002 autocontenida (previa a la refactorización DWH 0003)."""
 
-# pylint: disable=invalid-name,import-outside-toplevel
+# pylint: disable=invalid-name,import-outside-toplevel,no-member
 
 from typing import Any
 
