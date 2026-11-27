@@ -156,7 +156,23 @@ def test_vista_unificada_dashboard_y_redireccion_legado(
     assert r_dash.status_code == 200
     assert "text/html" in r_dash.headers["content-type"]
     assert "Modelos ML" in r_dash.text
+    assert "Orquestación" in r_dash.text
     assert "/static/js/dashboard.js" in r_dash.text
+
+    r_mon = cliente_dwh_sqlite.get("/etl/monitor/status")
+    assert r_mon.status_code == 200
+    mon = r_mon.json()
+    assert mon["timing"]["status"] == "COMPLETED"
+    assert len(mon["steps"]) >= 15
+
+    r_out = cliente_dwh_sqlite.get(
+        "/etl/monitor/step-output?output_key=gold_dim_empresa_360&limit=5"
+    )
+    assert r_out.status_code == 200
+    assert r_out.json()["total_rows"] == 4
+
+    r_bad_cron = cliente_dwh_sqlite.put("/etl/monitor/schedule", json={"cron": "0 6 *"})
+    assert r_bad_cron.status_code == 400
 
     r_css = cliente_dwh_sqlite.get("/static/css/dashboard.css")
     assert r_css.status_code == 200

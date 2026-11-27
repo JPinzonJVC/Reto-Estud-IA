@@ -41,6 +41,10 @@
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8L12 2z"/></svg>
           <span>Modelos ML</span>
         </button>
+        <button class="nav-link" type="button" role="tab" aria-selected="false" data-tab="etl" data-title="Orquestación Prefect & DWH Medallion">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span>Orquestación</span>
+        </button>
       </nav>
 
       <div class="sidebar-card">
@@ -443,6 +447,98 @@
             </div>
             <div id="ml-riesgo-view" class="chart-view"></div>
           </article>
+        </div>
+      </section>
+
+      <!-- VISTA 6: ORQUESTACIÓN PREFECT & DWH MEDALLION -->
+      <section class="view-panel" data-view="etl" role="tabpanel">
+        <div class="bento-grid">
+          <article class="panel span-12 etl-hero-card">
+            <div class="etl-hero-top">
+              <div>
+                <p class="eyebrow">PREFECT SERVER / <span id="etl-schedule-eyebrow">PROGRAMACIÓN SEMANAL</span></p>
+                <div class="etl-title-row">
+                  <h2 id="etl-flow-name">eda-medallion-weekly-pipeline</h2>
+                  <span id="etl-schedule-pill" class="etl-pill-blue">SEMANAL</span>
+                  <span id="etl-prefect-conn" class="tag soft-violet">Verificando Prefect…</span>
+                </div>
+                <p id="etl-run-meta" class="chart-description">Run ID: — · Deployment: —</p>
+              </div>
+              <div class="panel-actions">
+                <button id="etl-trigger-btn" type="button" class="btn-csv">Ejecutar ahora</button>
+                <button id="etl-autorefresh-btn" type="button" class="btn-auto" aria-pressed="false">Auto-recarga: OFF</button>
+                <button id="etl-refresh-btn" type="button" class="btn-auto">Actualizar estado</button>
+              </div>
+            </div>
+
+            <div class="etl-progress-box">
+              <div class="etl-progress-head">
+                <div class="etl-state-left">
+                  <span id="etl-status-dot" class="status-dot completed"></span>
+                  <strong id="etl-status-text">COMPLETADO</strong>
+                  <small id="etl-status-sub">Cargando última ejecución…</small>
+                </div>
+                <div class="etl-progress-right">
+                  <span>PROGRESO GLOBAL DWH</span>
+                  <strong id="etl-progress-pct">0%</strong>
+                </div>
+              </div>
+              <div class="etl-progress-track">
+                <div id="etl-progress-fill" class="etl-progress-fill" style="width:0%"></div>
+              </div>
+              <div class="etl-meta-strip">
+                <div><span>Última ejecución</span><strong id="etl-last-ago">—</strong><small id="etl-last-ts">—</small></div>
+                <div><span>Próxima ejecución</span><strong id="etl-next-in">—</strong><small id="etl-next-ts">—</small></div>
+                <div><span>Duración</span><strong id="etl-elapsed">—</strong><small>Corrida Medallion</small></div>
+                <div><span>Etapas completadas</span><strong id="etl-steps-ratio">—</strong><small>Silver 3NF + Gold</small></div>
+                <div><span>Registros cargados</span><strong id="etl-records-loaded">—</strong><small id="etl-records-errors">—</small></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="panel span-7">
+            <div class="panel-head">
+              <div><p class="eyebrow">Linaje DWH Medallion</p><h2>Etapas de ejecución (Extract → Bronze → Silver 3NF → Gold)</h2></div>
+              <span id="etl-steps-summary" class="tag soft-violet">—</span>
+            </div>
+            <p class="chart-description">Haz clic en cualquier etapa para inspeccionar su tabla real en PostgreSQL, reglas de calidad y cuadre origen-destino.</p>
+            <ol id="etl-steps-list" class="etl-steps-list" aria-live="polite"></ol>
+          </article>
+
+          <div class="span-5 etl-right-rail">
+            <article class="panel">
+              <div class="panel-head">
+                <div><p class="eyebrow">Salida verificada</p><h2 id="etl-output-title">Selecciona una etapa</h2></div>
+                <span id="etl-output-count" class="tag soft-violet">—</span>
+              </div>
+              <p id="etl-output-subtitle" class="chart-description">Muestra en vivo de registros persistidos, reglas de calidad y reconciliación.</p>
+              <div id="etl-output-metrics" class="etl-mini-kpis"></div>
+              <div id="etl-output-quality" class="etl-quality-box"></div>
+              <div id="etl-output-table" class="table-wrap bounded compact-table"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-head">
+                <div><p class="eyebrow">Prefect Scheduler & Auditoría</p><h2>Programación Cron e historial</h2></div>
+                <span id="etl-cron-badge" class="tag">—</span>
+              </div>
+              <form id="etl-cron-form" class="etl-cron-form">
+                <div class="etl-cron-row">
+                  <input id="etl-cron-input" type="text" placeholder="*/5 * * * *" aria-label="Expresión cron de 5 campos" required>
+                  <button type="submit" class="btn-csv">Guardar cron</button>
+                </div>
+                <div class="etl-cron-presets">
+                  <button type="button" data-cron-preset="*/5 * * * *">Cada 5 min</button>
+                  <button type="button" data-cron-preset="0 * * * *">Cada hora</button>
+                  <button type="button" data-cron-preset="0 6 * * *">Diario 06:00</button>
+                  <button type="button" data-cron-preset="0 6 * * 1">Semanal Lun 06:00</button>
+                </div>
+                <small id="etl-cron-feedback" class="etl-cron-feedback" aria-live="polite"></small>
+              </form>
+              <div id="etl-schedule-details" class="etl-schedule-grid"></div>
+              <ul id="etl-history-list" class="etl-history-list" aria-live="polite"></ul>
+            </article>
+          </div>
         </div>
       </section>
     </section>

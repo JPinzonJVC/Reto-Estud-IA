@@ -170,7 +170,12 @@ class OrchestrationEnvs(BaseModel):
     force_reprocess: bool = Field(
         default_factory=lambda: _parse_bool_env("EDA_FORCE_REPROCESS", False)
     )
-    """Fuerza la ejecución del Medallion ETL aunque no haya cambios en fuentes (EDA_FORCE_REPROCESS)."""
+    """Fuerza ejecución del ETL aunque no haya cambios (EDA_FORCE_REPROCESS)."""
+
+    cleanup_raw_after_load: bool = Field(
+        default_factory=lambda: _parse_bool_env("EDA_CLEANUP_RAW_AFTER_LOAD", True)
+    )
+    """Elimina temporales raw_drive/raw_zoho tras carga (EDA_CLEANUP_RAW_AFTER_LOAD)."""
 
     @field_validator("schedule_cron")
     @classmethod

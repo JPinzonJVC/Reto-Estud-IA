@@ -272,21 +272,63 @@ def run_medallion_etl_task(*, engine: Engine) -> dict[str, Any]:
         Exception: Si ocurre un error crítico en Bronze, Silver, Gold o carga DB.
 
     """
-    return ejecutar_pipeline_completo(persistir_en_db=True, db_engine=engine)
+    return ejecutar_pipeline_completo(
+        persistir_en_db=True,
+        db_engine=engine,
+        permitir_actualizacion_bronze=True,
+    )
+
+
+@task(
+    name="cleanup-staging-raw",
+    cache_policy=NO_CACHE,
+)
+def cleanup_staging_raw_task(*, files_to_delete: list[Path]) -> int:
+    """Elimina archivos temporales en raw_drive/raw_zoho tras carga exitosa.
+
+    Args:
+        files_to_delete: Rutas de archivos temporales generados por Drive y Zoho.
+
+    Returns:
+        Cantidad total de archivos temporales eliminados.
+
+    """
+    deleted = 0
+    parent_dirs: set[Path] = set()
+    for path in files_to_delete:
+        if path.name == ".gitkeep":
+            continue
+        try:
+            if path.exists() and path.is_file():
+                path.unlink()
+                deleted += 1
+                parent_dirs.add(path.parent)
+        except OSError as exc:
+            logger.warning("No se pudo eliminar temporal %s: %s", path, exc)
+
+    for directory in sorted(parent_dirs, key=lambda p: len(p.parts), reverse=True):
+        try:
+            if directory.exists() and not any(directory.iterdir()):
+                directory.rmdir()
+        except OSError:
+            continue
+    return deleted
 
 
 @flow(name="eda-medallion-weekly-pipeline", log_prints=True)
 def eda_medallion_flow(
     *,
     force_reprocess: bool | None = None,
+    cleanup_raw_after_load: bool | None = None,
     engine: Engine | None = None,
     drive_extractor: GoogleDriveExtractor | None = None,
     zoho_extractor: ZohoCRMExtractor | None = None,
 ) -> dict[str, Any]:
-    """Orquesta extracción (Drive + Zoho) y ejecución condicional del pipeline Medallion.
+    """Orquesta extracción (Drive + Zoho), Medallion ETL y limpieza de staging.
 
     Args:
         force_reprocess: Sobreescribe EDA_FORCE_REPROCESS para forzar el ETL.
+        cleanup_raw_after_load: Sobreescribe EDA_CLEANUP_RAW_AFTER_LOAD.
         engine: Motor SQLAlchemy opcional; si es None usa el singleton de app.database.
         drive_extractor: Extractor de Google Drive opcional para pruebas.
         zoho_extractor: Extractor de Zoho CRM opcional para pruebas.
@@ -294,13 +336,15 @@ def eda_medallion_flow(
     Returns:
         Diccionario con estado final ('SKIPPED_NO_CHANGES' o 'COMPLETED') y detalle.
 
-    Raises:
-        Exception: Si falla alguna de las tareas de extracción o el pipeline Medallion.
-
     """
     settings = OrchestrationEnvs()
     effective_force = (
         settings.force_reprocess if force_reprocess is None else force_reprocess
+    )
+    effective_cleanup = (
+        settings.cleanup_raw_after_load
+        if cleanup_raw_after_load is None
+        else cleanup_raw_after_load
     )
     db_engine = engine or get_engine()
 
@@ -328,15 +372,24 @@ def eda_medallion_flow(
             "drive": drive_result.model_dump(mode="json"),
             "zoho": zoho_result.model_dump(mode="json"),
             "pipeline_run_id": None,
+            "staging_cleaned_files": 0,
         }
 
     etl_result = run_medallion_etl_task(engine=db_engine)
+    pipeline_errors = etl_result.get("errores", [])
+    cleaned_files = 0
+    if effective_cleanup and not pipeline_errors:
+        staging_files = [*drive_result.files_written, *zoho_result.files_written]
+        if staging_files:
+            cleaned_files = cleanup_staging_raw_task(files_to_delete=staging_files)
+
     return {
         "status": "COMPLETED",
         "drive": drive_result.model_dump(mode="json"),
         "zoho": zoho_result.model_dump(mode="json"),
         "pipeline_run_id": etl_result.get("run_id"),
-        "pipeline_errors": etl_result.get("errores", []),
+        "pipeline_errors": pipeline_errors,
+        "staging_cleaned_files": cleaned_files,
     }
 
 
@@ -372,6 +425,7 @@ def serve_eda_pipeline() -> None:
     eda_medallion_flow.serve(  # type: ignore[attr-defined]
         name=settings.deployment_name,
         schedules=[schedule],
+        limit=1,
     )
 
 
