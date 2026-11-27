@@ -1,4 +1,4 @@
-"""Punto de entrada principal de la aplicación FastAPI y analítica de datos."""
+"""Punto de entrada principal de la aplicación FastAPI, DWH y analítica ACTHO 360."""
 
 from pathlib import Path
 from typing import Any
@@ -6,7 +6,7 @@ from typing import Any
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -20,9 +20,9 @@ from app.modules.retention.router import retention_router
 BASE_DIR = Path(__file__).resolve().parent
 
 app = FastAPI(
-    title="Reto EstudIA - Analítica & ML",
-    version="1.0.0",
-    description="Plataforma de análisis de datos, modelos ML y retención.",
+    title="ACTHO 360 - Data Warehouse, Analítica & ML",
+    version="2.0.0",
+    description="Plataforma ejecutiva sobre arquitectura Medallion (Silver 3NF + Gold).",
 )
 
 app.add_middleware(
@@ -33,14 +33,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Montar recursos estáticos si el directorio existe
 static_dir = BASE_DIR / "static"
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
-# Registro de routers modulares
 app.include_router(retention_router)
 app.include_router(analytics_router)
 app.include_router(affiliates_router)
@@ -57,12 +55,30 @@ def health_check() -> dict[str, str]:
         Diccionario confirmando el estado de salud y versión de la API.
 
     """
-    return {"status": "ok", "app": "Reto EstudIA", "version": "1.0.0"}
+    return {"status": "ok", "app": "Reto EstudIA", "version": "2.0.0"}
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+def render_main_dashboard(request: Request) -> Any:
+    """Renderiza el tablero ejecutivo principal en la ruta unificada /dashboard.
+
+    Args:
+        request: Solicitud HTTP requerida por Jinja2Templates.
+
+    Returns:
+        Respuesta HTML con el tablero Horizon UI conectado al DWH.
+
+    """
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard/index.html",
+        context={"title": "ACTHO 360 - Dashboard Ejecutivo"},
+    )
 
 
 @app.get("/", response_class=HTMLResponse)
 def render_dashboard(request: Request) -> Any:
-    """Renderiza el tablero principal de analítica y retención.
+    """Renderiza la vista raíz reutilizando la plantilla principal del tablero.
 
     Args:
         request: Objeto Request requerido por Jinja2Templates.
@@ -76,27 +92,16 @@ def render_dashboard(request: Request) -> Any:
         return templates.TemplateResponse(
             request=request,
             name="dashboard/index.html",
-            context={"title": "Reto EstudIA - Dashboard"},
+            context={"title": "ACTHO 360 - Dashboard Ejecutivo"},
         )
-    return HTMLResponse("<h1>Reto EstudIA - Plataforma de Analítica y ML</h1>")
+    return HTMLResponse("<h1>ACTHO 360 - Plataforma de Analítica y ML</h1>")
 
 
-@app.get("/dashboard/silver", response_class=HTMLResponse)
-def render_silver_dashboard(request: Request) -> Any:
-    """Renderiza el tablero operativo conectado a endpoints Silver.
-
-    Args:
-        request: Solicitud HTTP requerida por Jinja2.
-
-    Returns:
-        Plantilla HTML del dashboard Silver de ACTHO.
-
-    """
-    return templates.TemplateResponse(
-        request=request,
-        name="dashboard/silver.html",
-        context={"title": "ACTHO 360 - Dashboard Silver"},
-    )
+@app.get("/dashboard/silver", include_in_schema=False)
+@app.get("/dashboard/silvers", include_in_schema=False)
+def redirect_legacy_silver_dashboard() -> RedirectResponse:
+    """Redirige rutas heredadas /dashboard/silver hacia /dashboard."""
+    return RedirectResponse(url="/dashboard", status_code=307)
 
 
 if __name__ == "__main__":
