@@ -146,3 +146,24 @@ def test_compatibilidad_rutas_silver_y_espacio_ml_reservado(
         resp_m = cliente_dwh_sqlite.get(subruta)
         assert resp_m.status_code == 200
         assert resp_m.json()["estado"] == "ESPACIO_RESERVADO"
+
+
+def test_vista_unificada_dashboard_y_redireccion_legado(
+    cliente_dwh_sqlite: TestClient,
+) -> None:
+    """Verifica que /dashboard renderice Horizon UI y /dashboard/silver redirija."""
+    r_dash = cliente_dwh_sqlite.get("/dashboard")
+    assert r_dash.status_code == 200
+    assert "text/html" in r_dash.headers["content-type"]
+    assert "Modelos ML" in r_dash.text
+    assert "/static/js/dashboard.js" in r_dash.text
+
+    r_css = cliente_dwh_sqlite.get("/static/css/dashboard.css")
+    assert r_css.status_code == 200
+
+    r_js = cliente_dwh_sqlite.get("/static/js/dashboard.js")
+    assert r_js.status_code == 200
+
+    r_red = cliente_dwh_sqlite.get("/dashboard/silver", follow_redirects=False)
+    assert r_red.status_code == 307
+    assert r_red.headers["location"] == "/dashboard"
