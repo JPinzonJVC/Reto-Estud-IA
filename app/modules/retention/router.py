@@ -5,6 +5,9 @@ import io
 from datetime import date
 from typing import Any
 
+# FastAPI define sus parámetros de query como argumentos del endpoint.
+# pylint: disable=too-many-positional-arguments
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
@@ -73,10 +76,16 @@ def evaluate_customer(payload: CustomerEvaluationRequest) -> dict[str, Any]:
         Resultado del análisis de riesgo con recomendaciones personalizadas.
 
     """
-    return service.analyze_customer(
-        customer_id=payload.customer_id,
-        features=payload.features,
-    )
+    try:
+        return service.analyze_customer(
+            customer_id=payload.customer_id,
+            features=payload.features,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="No hay artefacto supervisado aprobado para inferencia de churn.",
+        ) from exc
 
 
 @retention_router.get("/silver/segments")

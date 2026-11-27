@@ -5,7 +5,6 @@ from typing import Any
 
 import joblib
 import numpy as np
-from sklearn.linear_model import LogisticRegression
 
 MODELS_DIR = Path(__file__).parent / "models"
 
@@ -46,14 +45,7 @@ def predict_churn(
 
     """
     if model is None:
-        try:
-            model = load_model("churn_model.pkl")
-        except FileNotFoundError:
-            # Fallback defensivo para entornos de prueba sin artefactos
-            model = LogisticRegression()
-            model.classes_ = np.array([0, 1])
-            model.coef_ = np.array([[0.1, 0.5]])
-            model.intercept_ = np.array([-1.0])
+        model = load_model("churn_model.pkl")
 
     x_input = np.array([features], dtype=float)
     prediction = int(model.predict(x_input)[0])
@@ -81,10 +73,7 @@ def predict_cluster(
 
     """
     if model is None:
-        try:
-            model = load_model("clustering_model.pkl")
-        except FileNotFoundError:
-            return 0
+        model = load_model("clustering_model.pkl")
 
     x_input = np.array([features], dtype=float)
     cluster_id = int(model.predict(x_input)[0])

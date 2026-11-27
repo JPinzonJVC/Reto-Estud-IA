@@ -68,14 +68,9 @@ def save_model(model: Any, filename: str) -> Path:
 
 def bootstrap_default_models() -> None:
     """Genera artefactos de modelo básicos para desarrollo y pruebas."""
-    dummy_x = np.array([[10, 2], [20, 5], [5, 1], [30, 8], [15, 3]], dtype=float)
-    dummy_y = np.array([0, 1, 0, 1, 0])
-
-    churn_mdl = train_churn_model(dummy_x, dummy_y)
-    save_model(churn_mdl, "churn_model.pkl")
-
-    cluster_mdl = train_clustering_model(dummy_x, n_clusters=2)
-    save_model(cluster_mdl, "clustering_model.pkl")
+    raise RuntimeError(
+        "Bootstrap deshabilitado: los datos sintéticos no son modelos de producción."
+    )
 
 
 if __name__ == "__main__":
