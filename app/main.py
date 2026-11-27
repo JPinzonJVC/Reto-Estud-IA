@@ -14,6 +14,7 @@ from app.modules.affiliates.router import affiliates_router
 from app.modules.analytics.router import analytics_router
 from app.modules.dashboard.router import dashboard_router
 from app.modules.eda.router import eda_router
+from app.modules.machine_learning.router import ml_router
 from app.modules.retention.router import retention_router
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -45,6 +46,7 @@ app.include_router(analytics_router)
 app.include_router(affiliates_router)
 app.include_router(dashboard_router)
 app.include_router(eda_router)
+app.include_router(ml_router)
 
 
 @app.get("/health", status_code=200)
