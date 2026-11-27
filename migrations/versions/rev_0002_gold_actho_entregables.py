@@ -27,6 +27,15 @@ def _resolver_bind(bind: Engine | Connection | None = None) -> Any:
         return get_engine()
 
 
+def _ejecutar_sql(target: Any, sentencia: str) -> None:
+    """Ejecuta DDL manejando tanto Engine como Connection activa de Alembic."""
+    if isinstance(target, Engine):
+        with target.begin() as conn:
+            conn.execute(sa.text(sentencia))
+    else:
+        target.execute(sa.text(sentencia))
+
+
 def upgrade(bind: Engine | Connection | None = None) -> None:
     """Aplica ajustes intermedios 0002 si existen las tablas previas a 0003."""
     target = _resolver_bind(bind)
@@ -38,26 +47,22 @@ def upgrade(bind: Engine | Connection | None = None) -> None:
     cols = {
         c["name"] for c in inspector.get_columns("gold_agg_satisfaccion_encuestas")
     }
-    with target.begin() as conn:
-        if "tipo_encuesta" not in cols:
-            conn.execute(
-                sa.text(
-                    "ALTER TABLE gold_agg_satisfaccion_encuestas "
-                    "ADD COLUMN tipo_encuesta VARCHAR(64) DEFAULT 'POST_EVENTO'"
-                )
-            )
-        if "temarios_sugeridos_resumen" not in cols:
-            conn.execute(
-                sa.text(
-                    "ALTER TABLE gold_agg_satisfaccion_encuestas "
-                    "ADD COLUMN temarios_sugeridos_resumen TEXT"
-                )
-            )
+    if "tipo_encuesta" not in cols:
+        _ejecutar_sql(
+            target,
+            "ALTER TABLE gold_agg_satisfaccion_encuestas "
+            "ADD COLUMN tipo_encuesta VARCHAR(64) DEFAULT 'POST_EVENTO'",
+        )
+    if "temarios_sugeridos_resumen" not in cols:
+        _ejecutar_sql(
+            target,
+            "ALTER TABLE gold_agg_satisfaccion_encuestas "
+            "ADD COLUMN temarios_sugeridos_resumen TEXT",
+        )
 
 
 def downgrade(bind: Engine | Connection | None = None) -> None:
     """Revierte las tablas intermedias 0002 si están presentes."""
     target = _resolver_bind(bind)
-    with target.begin() as conn:
-        conn.execute(sa.text("DROP TABLE IF EXISTS gold_agg_segmentos_comunicaciones"))
-        conn.execute(sa.text("DROP TABLE IF EXISTS gold_agg_participacion_eventos"))
+    _ejecutar_sql(target, "DROP TABLE IF EXISTS gold_agg_segmentos_comunicaciones")
+    _ejecutar_sql(target, "DROP TABLE IF EXISTS gold_agg_participacion_eventos")

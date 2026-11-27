@@ -41,10 +41,29 @@ def run_migrations_online(context_obj: Any) -> None:
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
-    with connectable.connect() as connection:
+    with connectable.begin() as connection:
         context_obj.configure(
             connection=connection,
             target_metadata=target_metadata,
         )
         with context_obj.begin_transaction():
             context_obj.run_migrations()
+
+
+def _ejecutar_si_contexto_alembic_activo() -> None:
+    """Invoca la corrida online u offline cuando Alembic carga este módulo."""
+    try:
+        # pylint: disable=import-outside-toplevel
+        from alembic import context as alembic_ctx
+
+        es_offline = alembic_ctx.is_offline_mode()
+    except Exception:
+        return
+
+    if es_offline:
+        run_migrations_offline(alembic_ctx)
+    else:
+        run_migrations_online(alembic_ctx)
+
+
+_ejecutar_si_contexto_alembic_activo()

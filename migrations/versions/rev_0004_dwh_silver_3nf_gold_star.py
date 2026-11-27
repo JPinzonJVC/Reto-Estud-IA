@@ -83,13 +83,14 @@ def _ejecutar_drops(target: Any, nombres_tablas: tuple[str, ...]) -> None:
         nombres_tablas: Tupla de nombres de tablas en orden inverso de FK.
 
     """
+    sufijo = " CASCADE" if target.dialect.name == "postgresql" else ""
     if isinstance(target, Engine):
         with target.begin() as conn:
             for nombre in nombres_tablas:
-                conn.execute(sa.text(f"DROP TABLE IF EXISTS {nombre}"))
+                conn.execute(sa.text(f"DROP TABLE IF EXISTS {nombre}{sufijo}"))
     else:
         for nombre in nombres_tablas:
-            target.execute(sa.text(f"DROP TABLE IF EXISTS {nombre}"))
+            target.execute(sa.text(f"DROP TABLE IF EXISTS {nombre}{sufijo}"))
 
 
 def upgrade(bind: Engine | Connection | None = None) -> None:

@@ -21,6 +21,8 @@ services:
       - INPUT_DIR=/app/input
     volumes:
       - ./app:/app/app
+      - ./migrations:/app/migrations
+      - ./alembic.ini:/app/alembic.ini:ro
       - ./input:/app/input
       - ./logs:/app/logs
       - ./secrets:/app/secrets:ro
@@ -47,7 +49,11 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init-prefect-db.sql:/docker-entrypoint-initdb.d/init-prefect-db.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-estudia_db}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-estudia_db} && (psql -U $${POSTGRES_USER:-postgres} -d postgres -tc \"SELECT 1 FROM pg_database WHERE datname='prefect_db'\" | grep -q 1 || psql -U $${POSTGRES_USER:-postgres} -d postgres -c \"CREATE DATABASE prefect_db\")",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -69,9 +75,10 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4200/api/health').read()"]
+      start_period: 45s
       interval: 15s
       timeout: 5s
-      retries: 5
+      retries: 6
 
   prefect-worker:
     image: reto_estudia_app:latest
@@ -114,6 +121,8 @@ services:
       - ZOHO_OUTPUT_DIR=${ZOHO_OUTPUT_DIR:-/app/input/raw_zoho}
     volumes:
       - ./app:/app/app
+      - ./migrations:/app/migrations
+      - ./alembic.ini:/app/alembic.ini:ro
       - ./input:/app/input
       - ./logs:/app/logs
       - ./secrets:/app/secrets:ro

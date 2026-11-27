@@ -78,6 +78,33 @@ TABLAS_OBSOLETAS_LEGADO: tuple[str, ...] = (
     "audit_registros_duplicados",
 )
 
+TABLAS_REEMPLAZADAS_V3: tuple[str, ...] = (
+    *TABLAS_OBSOLETAS_LEGADO,
+    "silver_fact_movimientos_crm",
+    "silver_fact_encuestas_satisfaccion",
+    "silver_fact_asistencias",
+    "silver_dim_eventos",
+    "silver_dim_personas",
+    "silver_dim_empresas",
+    "silver_dim_kams",
+)
+
+
+def _requiere_reemplazo_esquema_v3(inspector: Any, existentes: set[str]) -> bool:
+    """Detecta si la base de datos aún conserva columnas NOT NULL del modelo legado."""
+    huellas_legado = (
+        ("silver_dim_kams", "es_kam_asignado"),
+        ("silver_dim_empresas", "es_membresia_activa"),
+        ("silver_dim_eventos", "fecha_evento"),
+        ("silver_fact_asistencias", "es_afiliado"),
+    )
+    for tabla, col_antigua in huellas_legado:
+        if tabla in existentes:
+            cols = {c["name"] for c in inspector.get_columns(tabla)}
+            if col_antigua in cols:
+                return True
+    return False
+
 
 def inicializar_esquema_medallion(engine: Engine | None = None) -> None:
     """Sincroniza el esquema de las 25 tablas DWH y purga tablas obsoletas.
@@ -89,11 +116,17 @@ def inicializar_esquema_medallion(engine: Engine | None = None) -> None:
     target_engine = engine or get_engine()
     inspector = inspect(target_engine)
     tablas_existentes = set(inspector.get_table_names())
+    sufijo = " CASCADE" if target_engine.dialect.name == "postgresql" else ""
+    a_eliminar = (
+        TABLAS_REEMPLAZADAS_V3
+        if _requiere_reemplazo_esquema_v3(inspector, tablas_existentes)
+        else TABLAS_OBSOLETAS_LEGADO
+    )
 
     with target_engine.begin() as conn:
-        for obsoleta in TABLAS_OBSOLETAS_LEGADO:
+        for obsoleta in a_eliminar:
             if obsoleta in tablas_existentes:
-                conn.execute(text(f"DROP TABLE IF EXISTS {obsoleta}"))
+                conn.execute(text(f"DROP TABLE IF EXISTS {obsoleta}{sufijo}"))
 
     Base.metadata.create_all(bind=target_engine)
     inspector = inspect(target_engine)
