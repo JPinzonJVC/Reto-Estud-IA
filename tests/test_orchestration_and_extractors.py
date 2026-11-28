@@ -2,7 +2,9 @@
 
 # pylint: disable=no-member,import-outside-toplevel
 
+from contextlib import ExitStack
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -377,6 +379,38 @@ def test_zoho_crm_extractor_incremental(tmp_path: Path) -> None:
     assert not (tmp_path / "zoho" / "zoho_contacts.csv").exists()
 
 
+def _run_flow_direct(**kwargs: Any) -> dict[str, Any]:
+    """Ejecuta ``eda_medallion_flow`` sin levantar el servidor efímero de Prefect.
+
+    Args:
+        **kwargs: Argumentos reenviados a ``eda_medallion_flow``.
+
+    Returns:
+        Diccionario resultado de la ejecución del flujo.
+
+    Raises:
+        None.
+
+    """
+    from app.modules.eda.orchestration import flows as flows_mod
+
+    task_names = (
+        "extract_google_drive_task",
+        "extract_zoho_crm_task",
+        "run_medallion_etl_task",
+        "cleanup_staging_raw_task",
+    )
+    with ExitStack() as stack:
+        for name in task_names:
+            obj = getattr(flows_mod, name)
+            fn = getattr(obj, "fn", None)
+            if fn is not None:
+                stack.enter_context(patch.object(flows_mod, name, new=fn))
+        flow_fn = getattr(eda_medallion_flow, "fn", eda_medallion_flow)
+        result: dict[str, Any] = flow_fn(**kwargs)
+        return result
+
+
 def test_eda_medallion_flow_skips_and_runs_conditionally() -> None:
     """Verifica que el flow solo ejecute Medallion si hay cambios o force=True.
 
@@ -397,7 +431,7 @@ def test_eda_medallion_flow_skips_and_runs_conditionally() -> None:
     with patch(
         "app.modules.eda.orchestration.flows.ejecutar_pipeline_completo"
     ) as mock_etl:
-        skipped = eda_medallion_flow(
+        skipped = _run_flow_direct(
             force_reprocess=False,
             engine=engine,
             drive_extractor=drive_disabled,
@@ -407,7 +441,7 @@ def test_eda_medallion_flow_skips_and_runs_conditionally() -> None:
         mock_etl.assert_not_called()
 
         mock_etl.return_value = {"run_id": "run-test-001", "errores": []}
-        forced = eda_medallion_flow(
+        forced = _run_flow_direct(
             force_reprocess=True,
             engine=engine,
             drive_extractor=drive_disabled,
@@ -467,7 +501,7 @@ def test_eda_medallion_flow_cleans_staging_files_after_success(tmp_path: Path) -
         "app.modules.eda.orchestration.flows.ejecutar_pipeline_completo",
         return_value={"run_id": "run-clean-001", "errores": []},
     ):
-        res = eda_medallion_flow(
+        res = _run_flow_direct(
             force_reprocess=False,
             cleanup_raw_after_load=True,
             engine=engine,
