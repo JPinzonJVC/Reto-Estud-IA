@@ -35,9 +35,7 @@ except ImportError:  # pragma: no cover - fallback para entornos sin prefect ins
     PREFECT_AVAILABLE = False
     NO_CACHE = None  # type: ignore[assignment,no-redef]
 
-    def flow(  # type: ignore[no-redef]
-        *_args: Any, **_kwargs: Any
-    ) -> Callable[[_F], _F]:
+    def flow(*_args: Any, **_kwargs: Any) -> Callable[[_F], _F]:  # type: ignore[no-redef]
         """Decorador fallback cuando prefect no está instalado.
 
         Args:
@@ -69,9 +67,7 @@ except ImportError:  # pragma: no cover - fallback para entornos sin prefect ins
 
         return _decorator
 
-    def task(  # type: ignore[no-redef]
-        *_args: Any, **_kwargs: Any
-    ) -> Callable[[_F], _F]:
+    def task(*_args: Any, **_kwargs: Any) -> Callable[[_F], _F]:  # type: ignore[no-redef]
         """Decorador fallback cuando prefect no está instalado.
 
         Args:
