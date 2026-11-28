@@ -27,8 +27,11 @@ from app.modules.eda.models import (
     SilverFactMovimientoCrm,
 )
 
+_redis_pkg: Any = None
 try:
-    import redis as _redis_pkg  # type: ignore[import-untyped]
+    import redis as _redis_mod  # type: ignore[import-untyped]
+
+    _redis_pkg = _redis_mod
 except ImportError:  # pragma: no cover
     _redis_pkg = None
 
