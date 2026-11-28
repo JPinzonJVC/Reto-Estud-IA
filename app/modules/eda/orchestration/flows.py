@@ -25,17 +25,29 @@ logger = logging.getLogger(__name__)
 
 _F = TypeVar("_F", bound=Callable[..., Any])
 
-try:
-    from prefect import flow, task  # type: ignore[import-not-found]
-    from prefect.cache_policies import NO_CACHE  # type: ignore[import-not-found]
-    from prefect.schedules import Cron  # type: ignore[import-not-found]
+flow: Any
+task: Any
+NO_CACHE: Any
+Cron: Any
 
+try:
+    from prefect import flow as _prefect_flow  # type: ignore[import-not-found]
+    from prefect import task as _prefect_task
+    from prefect.cache_policies import (
+        NO_CACHE as _PREFECT_NO_CACHE,  # type: ignore[import-not-found]
+    )
+    from prefect.schedules import Cron as _PrefectCron  # type: ignore[import-not-found]
+
+    flow = _prefect_flow
+    task = _prefect_task
+    NO_CACHE = _PREFECT_NO_CACHE
+    Cron = _PrefectCron
     PREFECT_AVAILABLE = True
 except ImportError:  # pragma: no cover - fallback para entornos sin prefect instalado
     PREFECT_AVAILABLE = False
-    NO_CACHE = None  # type: ignore[assignment]
+    NO_CACHE = None
 
-    def flow(*_args: Any, **_kwargs: Any) -> Callable[[_F], _F]:
+    def _fallback_flow(*_args: Any, **_kwargs: Any) -> Callable[[_F], _F]:
         """Decorador fallback cuando prefect no está instalado.
 
         Args:
@@ -67,7 +79,7 @@ except ImportError:  # pragma: no cover - fallback para entornos sin prefect ins
 
         return _decorator
 
-    def task(*_args: Any, **_kwargs: Any) -> Callable[[_F], _F]:
+    def _fallback_task(*_args: Any, **_kwargs: Any) -> Callable[[_F], _F]:
         """Decorador fallback cuando prefect no está instalado.
 
         Args:
@@ -98,6 +110,9 @@ except ImportError:  # pragma: no cover - fallback para entornos sin prefect ins
             return func
 
         return _decorator
+
+    flow = _fallback_flow
+    task = _fallback_task
 
 
 @task(
