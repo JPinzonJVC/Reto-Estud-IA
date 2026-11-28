@@ -12,10 +12,10 @@ class GoldFactAsistenciasBi(Base):  # type: ignore[misc,valid-type]
 
     __tablename__ = "gold_fact_asistencias_bi"
 
-    id_asistencia = Column(String(64), primary_key=True)
+    id_asistencia: Any = Column(String(64), primary_key=True)
     """Clave primaria del registro de asistencia."""
 
-    id_evento = Column(
+    id_evento: Any = Column(
         Integer,
         ForeignKey("gold_dim_evento_kpis.id_evento"),
         nullable=False,
@@ -23,7 +23,7 @@ class GoldFactAsistenciasBi(Base):  # type: ignore[misc,valid-type]
     )
     """Clave foránea hacia gold_dim_evento_kpis."""
 
-    id_empresa = Column(
+    id_empresa: Any = Column(
         String(64),
         ForeignKey("gold_dim_empresa_360.id_empresa"),
         nullable=True,
@@ -31,28 +31,28 @@ class GoldFactAsistenciasBi(Base):  # type: ignore[misc,valid-type]
     )
     """Clave foránea opcional hacia gold_dim_empresa_360."""
 
-    id_persona = Column(String(64), nullable=True, index=True)
+    id_persona: Any = Column(String(64), nullable=True, index=True)
     """Identificador del participante para conteos COUNT DISTINCT."""
 
-    id_vinculo = Column(Integer, nullable=True)
+    id_vinculo: Any = Column(Integer, nullable=True)
     """Identificador del vínculo persona-empresa cuando aplica."""
 
-    kam_id_asistencia = Column(String(64), nullable=True)
+    kam_id_asistencia: Any = Column(String(64), nullable=True)
     """Ejecutiva KAM reportada en la asistencia."""
 
-    fecha_inicio_evento = Column(String(32), nullable=False)
+    fecha_inicio_evento: Any = Column(String(32), nullable=False)
     """Fecha ISO del evento."""
 
-    periodo_mes_iso = Column(String(32), nullable=False, index=True)
+    periodo_mes_iso: Any = Column(String(32), nullable=False, index=True)
     """Periodo mensual YYYY-MM."""
 
-    trimestre_iso = Column(String(32), nullable=False)
+    trimestre_iso: Any = Column(String(32), nullable=False)
     """Trimestre calendario YYYY-Qn."""
 
-    linea_oferta_2027 = Column(String(128), nullable=False)
+    linea_oferta_2027: Any = Column(String(128), nullable=False)
     """Línea 2027 del evento."""
 
-    modalidad = Column(String(64), nullable=False)
+    modalidad: Any = Column(String(64), nullable=False)
     """Modalidad del evento."""
 
     tipo_asistencia = Column(String(64), nullable=False)
@@ -179,10 +179,10 @@ class GoldFactEvolucionMembresiasMes(Base):  # type: ignore[misc,valid-type]
     vencimientos_programados_mes = Column(Integer, nullable=False, default=0)
     """Membresías con fecha de expiración en el mes."""
 
-    renovaciones_efectivas_mes = Column(Integer, nullable=False, default=0)
+    renovaciones_efectivas_mes: Any = Column(Integer, nullable=False, default=0)
     """Renovaciones facturadas en el mes."""
 
-    retiros_cancelaciones_mes = Column(Integer, nullable=False, default=0)
+    retiros_cancelaciones_mes: Any = Column(Integer, nullable=False, default=0)
     """Membresías expiradas o canceladas en el mes sin renovación."""
 
 

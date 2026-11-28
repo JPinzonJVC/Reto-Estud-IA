@@ -57,9 +57,8 @@ def build_rfm_s_features(
     result["_tenure_value"] = pd.to_numeric(
         result["total_ciclos_membresia"], errors="coerce"
     ).clip(lower=0)
-    result["_satisfaction_value"] = pd.to_numeric(
-        result["satisfaccion_promedio_1_5"], errors="coerce"
-    ).where(lambda values: values.between(1.0, 5.0))
+    sat_numeric = pd.to_numeric(result["satisfaccion_promedio_1_5"], errors="coerce")
+    result["_satisfaction_value"] = sat_numeric.where(sat_numeric.between(1.0, 5.0))
 
     result["recency"] = 100.0 * (
         1.0 - result["_recency_days"].rank(method="average", pct=True)

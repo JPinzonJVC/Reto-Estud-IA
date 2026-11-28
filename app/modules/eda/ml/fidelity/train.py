@@ -143,8 +143,9 @@ def summarize_cluster_profiles(
     sizes = profiled["cluster"].value_counts().sort_index()
     profiles: list[dict[str, Any]] = []
     for cluster_id in grouped.index:
+        cid_num = int(str(cluster_id))
         profile: dict[str, Any] = {
-            "cluster_id": int(cluster_id),
+            "cluster_id": cid_num,
             "companies": int(sizes.loc[cluster_id]),
         }
         for component in RFM_COMPONENTS:

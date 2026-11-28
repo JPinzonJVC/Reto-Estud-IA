@@ -19,7 +19,7 @@ def run_recommendation_baseline() -> dict[str, Any]:
         "companies_with_linked_history": int(attendance["id_empresa"].nunique()),
         "companies_with_recommendation": int(len(recommendations)),
         "line_distribution": {
-            str(line): int(count)
+            str(line): int(str(count))
             for line, count in recommendations["linea_2027_recomendada_baseline"]
             .value_counts()
             .items()
