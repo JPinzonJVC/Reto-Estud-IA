@@ -10,6 +10,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Connection, Engine
 
 from app.database import Base, get_engine
+from app.modules.dashboard.data_store import invalidar_cache_dwh
 from app.modules.eda import models as _models  # noqa: F401
 
 ORDEN_CARGA_TABLAS: tuple[tuple[str, str], ...] = (
@@ -285,6 +286,7 @@ def cargar_tablas_en_postgres(
             f"revertida con rollback): {exc}"
         ) from exc
 
+    invalidar_cache_dwh()
     return conteos
 
 

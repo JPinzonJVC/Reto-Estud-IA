@@ -18,6 +18,8 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres123}
       - POSTGRES_DB=${POSTGRES_DB:-estudia_db}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - DWH_CACHE_TTL_SECONDS=${DWH_CACHE_TTL_SECONDS:-30}
       - INPUT_DIR=/app/input
       - ACTHO_ML_ARTIFACTS_DIR=${ACTHO_ML_ARTIFACTS_DIR:-/var/lib/actho/ml_artifacts}
       - PREFECT_API_URL=http://prefect-server:4200/api
@@ -41,6 +43,8 @@ services:
       - ml_artifacts_data:/var/lib/actho/ml_artifacts
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
@@ -71,6 +75,18 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: reto_estudia_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   prefect-server:
     image: prefecthq/prefect:3-latest
     container_name: reto_estudia_prefect_server
@@ -86,6 +102,8 @@ services:
       - PREFECT_UI_API_URL=http://localhost:4200/api
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4200/api/health').read()"]
@@ -114,6 +132,8 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres123}
       - POSTGRES_DB=${POSTGRES_DB:-estudia_db}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - DWH_CACHE_TTL_SECONDS=${DWH_CACHE_TTL_SECONDS:-30}
       - INPUT_DIR=/app/input
       - ACTHO_ML_ARTIFACTS_DIR=${ACTHO_ML_ARTIFACTS_DIR:-/var/lib/actho/ml_artifacts}
       - EDA_SCHEDULE_CRON=${EDA_SCHEDULE_CRON:-0 6 * * 1}

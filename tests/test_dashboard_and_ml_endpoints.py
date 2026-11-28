@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.database import get_db
 from app.main import app
+from app.modules.dashboard.data_store import cargar_snapshot_dwh, invalidar_cache_dwh
 from app.modules.eda import cargar_configuracion, ejecutar_pipeline_completo
 from migrations.versions import rev_0004_dwh_silver_3nf_gold_star as mig_0004
 from tests.test_modelo_dimensional import crear_fuentes_sinteticas
@@ -183,3 +184,26 @@ def test_vista_unificada_dashboard_y_redireccion_legado(
     r_red = cliente_dwh_sqlite.get("/dashboard/silver", follow_redirects=False)
     assert r_red.status_code == 307
     assert r_red.headers["location"] == "/dashboard"
+
+
+def test_cache_snapshot_dwh_y_revalidacion(
+    cliente_dwh_sqlite: TestClient,
+) -> None:
+    """Verifica que cargar_snapshot_dwh reutilice caché L1 y se invalide al limpiar."""
+    override_db = app.dependency_overrides[get_db]
+    gen = override_db()
+    session = next(gen)
+    try:
+        invalidar_cache_dwh()
+        snap_1 = cargar_snapshot_dwh(session)
+        snap_2 = cargar_snapshot_dwh(session)
+        assert snap_1 is snap_2
+        assert snap_1.fuente == "postgresql"
+
+        invalidar_cache_dwh()
+        snap_3 = cargar_snapshot_dwh(session)
+        assert snap_3 is not snap_1
+        assert len(snap_3.dim_empresa_360) == len(snap_1.dim_empresa_360)
+    finally:
+        gen.close()
+    assert cliente_dwh_sqlite.get("/dashboard/overview").status_code == 200

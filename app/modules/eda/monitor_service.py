@@ -124,7 +124,9 @@ def _sesion_tiene_auditoria(session: Session | None) -> bool:
     if session is None:
         return False
     try:
-        return session.query(AuditEjecucionEtl.id_ejecucion).limit(1).count() > 0
+        return bool(
+            int(session.query(AuditEjecucionEtl.id_ejecucion).limit(1).count()) > 0
+        )
     except Exception:
         return False
 
